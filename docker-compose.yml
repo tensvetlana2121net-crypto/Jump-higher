@@ -1,10 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: jumpbot
       POSTGRES_USER: jumpbot
-      POSTGRES_PASSWORD: jumpbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +16,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -23,6 +25,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8000:8000"
@@ -37,6 +40,7 @@ services:
 
   worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - storage_data:/data/storage
@@ -49,6 +53,7 @@ services:
 
   bot:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - storage_data:/data/storage
