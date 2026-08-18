@@ -1,8 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,7 +34,9 @@ class Settings(BaseSettings):
             if not self.database_url.startswith("postgresql+asyncpg://"):
                 raise ValueError("Production must use PostgreSQL")
             if self.keep_source_video_days != 0:
-                raise ValueError("Production source-video retention must be 0 until cleanup is implemented")
+                raise ValueError(
+                    "Production source-video retention must be 0 until cleanup is implemented"
+                )
         return self
 
 

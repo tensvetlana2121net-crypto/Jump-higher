@@ -6,8 +6,8 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from jumpbot.config import get_settings
-from jumpbot.db.base import Base
 from jumpbot.db import models  # noqa: F401
+from jumpbot.db.base import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

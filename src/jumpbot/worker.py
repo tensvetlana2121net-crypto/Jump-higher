@@ -84,7 +84,8 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             if user and settings.telegram_bot_token:
                 await _notify_user(
                     user.telegram_user_id,
-                    f"Видео не удалось надёжно проанализировать: {exc}. Попробуйте переснять сбоку.",
+                    f"Видео не удалось надёжно проанализировать: {exc}. "
+                    "Попробуйте переснять сбоку.",
                 )
             return {"status": "rejected", "reason": str(exc)}
         except Exception as exc:
@@ -105,6 +106,9 @@ async def _notify_user(telegram_user_id: int, text: str) -> None:
     try:
         await bot.send_message(telegram_user_id, text)
     except Exception:
-        logger.exception("Telegram notification failed", extra={"telegram_user_id": telegram_user_id})
+        logger.exception(
+            "Telegram notification failed",
+            extra={"telegram_user_id": telegram_user_id},
+        )
     finally:
         await bot.session.close()

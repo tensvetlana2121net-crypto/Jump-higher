@@ -25,8 +25,13 @@ def hampel_filter(values: np.ndarray, window: int = 7, sigma: float = 3.0) -> np
         left, right = max(0, index - radius), min(result.size, index + radius + 1)
         sample = result[left:right]
         median = np.nanmedian(sample)
-        mad = np.nanmedian(np.abs(sample - median))
-        threshold = sigma * 1.4826 * mad
+        deviations = np.abs(sample - median)
+        mad = np.nanmedian(deviations)
+        if mad > 0:
+            threshold = sigma * 1.4826 * mad
+        else:
+            nonzero = deviations[deviations > 0]
+            threshold = sigma * np.nanmedian(nonzero) if nonzero.size else 0.0
         if np.isfinite(result[index]) and threshold > 0 and abs(result[index] - median) > threshold:
             result[index] = median
     return result

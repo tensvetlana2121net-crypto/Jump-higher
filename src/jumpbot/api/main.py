@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import select
@@ -12,6 +12,9 @@ from jumpbot.config import get_settings
 from jumpbot.db.models import JumpHistory, User
 from jumpbot.db.session import get_session
 from jumpbot.logging import configure_logging
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+ApiKeyDep = Annotated[None, Depends(require_api_key)]
 
 
 @asynccontextmanager
@@ -37,10 +40,12 @@ async def health() -> HealthRead:
 @app.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_or_update_user(
     payload: UserCreate,
-    _: None = Depends(require_api_key),
-    session: AsyncSession = Depends(get_session),
+    _: ApiKeyDep,
+    session: SessionDep,
 ) -> User:
-    user = await session.scalar(select(User).where(User.telegram_user_id == payload.telegram_user_id))
+    user = await session.scalar(
+        select(User).where(User.telegram_user_id == payload.telegram_user_id)
+    )
     if user is None:
         user = User(**payload.model_dump())
         session.add(user)
@@ -55,9 +60,9 @@ async def create_or_update_user(
 @app.get("/users/{telegram_user_id}/jumps", response_model=list[JumpRead])
 async def list_jumps(
     telegram_user_id: int,
+    _: ApiKeyDep,
+    session: SessionDep,
     limit: int = Query(default=20, ge=1, le=100),
-    _: None = Depends(require_api_key),
-    session: AsyncSession = Depends(get_session),
 ) -> list[JumpHistory]:
     user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
     if user is None:

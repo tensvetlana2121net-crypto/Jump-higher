@@ -50,4 +50,10 @@ def detect_phases(
 
     if velocity[takeoff] < -0.2:
         raise ValueError("Detected take-off conflicts with hip trajectory")
-    return PhaseFrames(start=start, countermovement_bottom=bottom, takeoff=takeoff, apex=apex, landing=landing)
+    return PhaseFrames(
+        start=start,
+        countermovement_bottom=bottom,
+        takeoff=takeoff,
+        apex=apex,
+        landing=landing,
+    )
