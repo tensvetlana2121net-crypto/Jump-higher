@@ -35,9 +35,10 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         jump.status = AnalysisStatus.PROCESSING
         await session.commit()
 
+        source_path = Path(jump.source_file_key or "")
         try:
             height_m = float(user.height_cm) / 100 if user and user.height_cm else None
-            result = analyze_jump(Path(jump.source_file_key or ""), height_m)
+            result = analyze_jump(source_path, height_m)
             payload = result.as_dict()
             jump.status = AnalysisStatus.COMPLETED
             jump.source_fps = Decimal(str(round(result.fps, 3)))
@@ -94,6 +95,9 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.completed_at = datetime.now(UTC)
             await session.commit()
             raise
+        finally:
+            if settings.keep_source_video_days == 0 and source_path.is_file():
+                source_path.unlink(missing_ok=True)
 
 
 async def _notify_user(telegram_user_id: int, text: str) -> None:

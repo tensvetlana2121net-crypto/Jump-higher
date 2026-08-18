@@ -15,6 +15,7 @@ from jumpbot.db.session import SessionLocal
 from jumpbot.logging import configure_logging
 from jumpbot.services.quota import consume_analysis
 from jumpbot.services.storage import LocalStorage, sha256_file
+from jumpbot.services.video_validation import validate_video_file
 from jumpbot.worker import analyze_video_task
 
 router = Router()
@@ -102,8 +103,20 @@ async def receive_video(message: Message, bot: Bot) -> None:
     if video is None:
         return
     file_size = video.file_size or 0
-    if file_size > settings.max_video_mb * 1024 * 1024:
+    max_bytes = settings.max_video_mb * 1024 * 1024
+    if file_size <= 0 or file_size > max_bytes:
         await message.answer(f"Максимальный размер — {settings.max_video_mb} МБ.")
+        return
+    mime_type = getattr(video, "mime_type", None) or "video/mp4"
+    allowed_mime_types = {
+        "video/mp4",
+        "video/quicktime",
+        "video/x-msvideo",
+        "video/x-matroska",
+        "video/webm",
+    }
+    if mime_type not in allowed_mime_types:
+        await message.answer("Поддерживаются только MP4, MOV, AVI, MKV и WebM.")
         return
     name = getattr(video, "file_name", None) or "jump.mp4"
     jump_id = uuid.uuid4()
@@ -113,8 +126,22 @@ async def receive_video(message: Message, bot: Bot) -> None:
         await message.answer(str(exc))
         return
 
+    try:
+        await bot.download(video, destination=path)
+        metadata = validate_video_file(path, max_bytes, settings.max_video_seconds)
+    except ValueError as exc:
+        path.unlink(missing_ok=True)
+        await message.answer(f"Видео отклонено: {exc}")
+        return
+    except Exception:
+        logging.exception("Video download or validation failed")
+        path.unlink(missing_ok=True)
+        await message.answer("Не удалось безопасно проверить видео. Попробуйте другой файл.")
+        return
+
     async with SessionLocal() as session:
         if not await consume_analysis(session, user.id):
+            path.unlink(missing_ok=True)
             await message.answer("Бесплатный недельный лимит исчерпан.")
             return
         jump = JumpHistory(
@@ -122,16 +149,11 @@ async def receive_video(message: Message, bot: Bot) -> None:
             user_id=user.id,
             status=AnalysisStatus.QUEUED,
             source_file_key=str(path),
+            source_file_sha256=sha256_file(path),
+            duration_ms=round(metadata.duration_s * 1000),
             calibration_method="athlete_height" if user.height_cm else "flight_time",
         )
         session.add(jump)
-        await session.commit()
-
-    await bot.download(video, destination=path)
-    async with SessionLocal() as session:
-        stored = await session.get(JumpHistory, jump_id)
-        assert stored is not None
-        stored.source_file_sha256 = sha256_file(path)
         await session.commit()
     analyze_video_task.delay(str(jump_id))
     await message.answer(f"Видео принято. Номер анализа: <code>{jump_id}</code>")

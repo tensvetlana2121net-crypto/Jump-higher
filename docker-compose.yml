@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - storage_data:/data/storage
     depends_on:
@@ -37,6 +37,12 @@ services:
       redis:
         condition: service_healthy
     command: sh -c "alembic upgrade head && uvicorn jumpbot.api.main:app --host 0.0.0.0 --port 8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
 
   worker:
     build: .
@@ -50,6 +56,12 @@ services:
       redis:
         condition: service_healthy
     command: celery -A jumpbot.worker.celery_app worker --loglevel=INFO --concurrency=1
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,noexec,nosuid
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
 
   bot:
     build: .
@@ -63,6 +75,12 @@ services:
       redis:
         condition: service_healthy
     command: python -m jumpbot.bot.main
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
 
 volumes:
   postgres_data:

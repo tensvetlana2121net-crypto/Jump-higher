@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jumpbot import __version__
 from jumpbot.api.schemas import HealthRead, JumpRead, UserCreate, UserRead
+from jumpbot.api.security import require_api_key
 from jumpbot.config import get_settings
 from jumpbot.db.models import JumpHistory, User
 from jumpbot.db.session import get_session
@@ -35,7 +36,9 @@ async def health() -> HealthRead:
 
 @app.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_or_update_user(
-    payload: UserCreate, session: AsyncSession = Depends(get_session)
+    payload: UserCreate,
+    _: None = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
 ) -> User:
     user = await session.scalar(select(User).where(User.telegram_user_id == payload.telegram_user_id))
     if user is None:
@@ -53,6 +56,7 @@ async def create_or_update_user(
 async def list_jumps(
     telegram_user_id: int,
     limit: int = Query(default=20, ge=1, le=100),
+    _: None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
 ) -> list[JumpHistory]:
     user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
