@@ -10,6 +10,10 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[cv]"
 
+# MediaPipe ships the lite/full pose models, but downloads the heavy model lazily.
+# Fetch it while building so the runtime container can remain read-only.
+RUN python -c "import mediapipe as mp; mp.solutions.pose.Pose(model_complexity=2).close()"
+
 COPY alembic.ini ./
 COPY migrations ./migrations
 
