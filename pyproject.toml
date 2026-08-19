@@ -18,7 +18,7 @@ dependencies = [
   "fastapi>=0.115,<1",
   "greenlet>=3.1,<4",
   "httpx>=0.27,<1",
-  "numpy>=1.26,<3",
+  "numpy>=1.26,<2",
   "pydantic-settings>=2.5,<3",
   "python-multipart>=0.0.12,<1",
   "sqlalchemy[asyncio]>=2.0,<3",
@@ -27,7 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cv = [
-  "mediapipe>=0.10.14,<1",
+  "mediapipe==0.10.21",
   "opencv-python-headless>=4.10,<5",
   "scipy>=1.14,<2",
 ]

@@ -10,6 +10,7 @@ from celery import Celery
 
 from jumpbot.config import get_settings
 from jumpbot.cv.pipeline import analyze_jump
+from jumpbot.cv.types import AnalysisResult
 from jumpbot.db.models import AnalysisStatus, JumpHistory, User
 from jumpbot.db.session import SessionLocal
 
@@ -17,6 +18,31 @@ settings = get_settings()
 celery_app = Celery("jumpbot", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.update(task_track_started=True, task_time_limit=300, task_soft_time_limit=270)
 logger = logging.getLogger(__name__)
+
+
+def _format_analysis_message(result: AnalysisResult) -> str:
+    lines = [
+        "✅ Анализ прыжка завершён",
+        f"Высота по времени полёта: {result.height_flight_m * 100:.1f} см",
+        f"Время полёта: {result.flight_time_s:.3f} с",
+    ]
+    if result.height_displacement_m is not None:
+        lines.append(f"Подъём центра масс: {result.height_displacement_m * 100:.1f} см")
+    if result.takeoff_velocity_mps is not None:
+        lines.append(f"Скорость в момент отрыва: {result.takeoff_velocity_mps:.2f} м/с")
+    if result.max_propulsion_velocity_mps is not None:
+        lines.append(
+            "Максимальная вертикальная скорость при отталкивании: "
+            f"{result.max_propulsion_velocity_mps:.2f} м/с"
+        )
+    if result.max_angular_velocity_dps is not None:
+        lines.append(
+            f"Максимальная угловая скорость корпуса: {result.max_angular_velocity_dps:.1f} °/с"
+        )
+    lines.append(f"Достоверность: {result.confidence_score:.0%}")
+    if result.quality_flags:
+        lines.append("Предупреждения качества: " + ", ".join(result.quality_flags))
+    return "\n".join(lines)
 
 
 @celery_app.task(name="jumpbot.analyze_video", bind=True, max_retries=1)
@@ -68,12 +94,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.completed_at = datetime.now(UTC)
             await session.commit()
             if user and settings.telegram_bot_token:
-                await _notify_user(
-                    user.telegram_user_id,
-                    "Анализ завершён. Высота по времени полёта: "
-                    f"{result.height_flight_m * 100:.1f} см. "
-                    f"Достоверность: {result.confidence_score:.0%}.",
-                )
+                await _notify_user(user.telegram_user_id, _format_analysis_message(result))
             return payload
         except ValueError as exc:
             jump.status = AnalysisStatus.REJECTED
@@ -95,6 +116,12 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.error_message = str(exc)[:1000]
             jump.completed_at = datetime.now(UTC)
             await session.commit()
+            if user and settings.telegram_bot_token:
+                await _notify_user(
+                    user.telegram_user_id,
+                    "Анализ завершился технической ошибкой. "
+                    "Видео сохранено в истории; попробуйте повторить позже.",
+                )
             raise
         finally:
             if settings.keep_source_video_days == 0 and source_path.is_file():
