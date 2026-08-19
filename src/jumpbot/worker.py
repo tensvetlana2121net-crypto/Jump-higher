@@ -62,6 +62,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         await session.commit()
 
         source_path = Path(jump.source_file_key or "")
+        delete_source = settings.keep_source_video_days == 0
         try:
             height_m = float(user.height_cm) / 100 if user and user.height_cm else None
             result = analyze_jump(source_path, height_m)
@@ -110,6 +111,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                 )
             return {"status": "rejected", "reason": str(exc)}
         except Exception as exc:
+            delete_source = False
             logger.exception("Jump analysis failed", extra={"jump_id": str(jump_id)})
             jump.status = AnalysisStatus.FAILED
             jump.error_code = "processing_error"
@@ -124,7 +126,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                 )
             raise
         finally:
-            if settings.keep_source_video_days == 0 and source_path.is_file():
+            if delete_source and source_path.is_file():
                 source_path.unlink(missing_ok=True)
 
 
