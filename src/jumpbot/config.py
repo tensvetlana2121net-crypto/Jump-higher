@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     free_analyses_per_week: int = Field(default=3, ge=0)
     keep_source_video_days: int = Field(default=0, ge=0)
     log_level: str = "INFO"
+    pose_backend: str = "rtmpose"
+
+    @model_validator(mode="after")
+    def validate_pose_backend(self) -> "Settings":
+        if self.pose_backend.lower() not in {"rtmpose", "mediapipe"}:
+            raise ValueError("POSE_BACKEND must be 'rtmpose' or 'mediapipe'")
+        return self
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

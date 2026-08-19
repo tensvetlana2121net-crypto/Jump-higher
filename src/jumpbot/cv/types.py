@@ -62,14 +62,12 @@ class AnalysisResult:
             "flight_time_s": self.flight_time_s,
             "height_flight_cm": self.height_flight_m * 100,
             "height_displacement_cm": (
-                self.height_displacement_m * 100
-                if self.height_displacement_m is not None
-                else None
+                self.height_displacement_m * 100 if self.height_displacement_m is not None else None
             ),
             "takeoff_velocity_mps": self.takeoff_velocity_mps,
             "max_propulsion_velocity_mps": self.max_propulsion_velocity_mps,
             "max_angular_velocity_dps": self.max_angular_velocity_dps,
             "confidence_score": self.confidence_score,
             "quality_flags": self.quality_flags,
-            "algorithm_version": "0.1.0",
+            "algorithm_version": "0.2.0",
         }

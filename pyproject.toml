@@ -28,7 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 cv = [
   "mediapipe==0.10.21",
-  "opencv-python-headless>=4.10,<5",
+  "opencv-python>=4.10,<5",
+  "rtmlib>=0.0.14,<1",
   "scipy>=1.14,<2",
 ]
 dev = [

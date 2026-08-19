@@ -65,7 +65,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         delete_source = settings.keep_source_video_days == 0
         try:
             height_m = float(user.height_cm) / 100 if user and user.height_cm else None
-            result = analyze_jump(source_path, height_m)
+            result = analyze_jump(source_path, height_m, settings.pose_backend)
             payload = result.as_dict()
             jump.status = AnalysisStatus.COMPLETED
             jump.source_fps = Decimal(str(round(result.fps, 3)))
@@ -82,9 +82,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             if result.takeoff_velocity_mps is not None:
                 jump.takeoff_velocity_mps = Decimal(str(round(result.takeoff_velocity_mps, 3)))
             if result.max_propulsion_velocity_mps is not None:
-                jump.max_propulsion_mps = Decimal(
-                    str(round(result.max_propulsion_velocity_mps, 3))
-                )
+                jump.max_propulsion_mps = Decimal(str(round(result.max_propulsion_velocity_mps, 3)))
             jump.max_angular_velocity_dps = Decimal(
                 str(round(result.max_angular_velocity_dps or 0, 2))
             )

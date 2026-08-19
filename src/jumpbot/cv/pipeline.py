@@ -25,8 +25,12 @@ def _midpoint(frames: list[FramePose], left: str, right: str, axis: str) -> np.n
     return np.asarray(result)
 
 
-def analyze_jump(video_path: Path, athlete_height_m: float | None = None) -> AnalysisResult:
-    frames, fps, frame_count = extract_pose(video_path)
+def analyze_jump(
+    video_path: Path,
+    athlete_height_m: float | None = None,
+    pose_backend: str = "rtmpose",
+) -> AnalysisResult:
+    frames, fps, frame_count = extract_pose(video_path, pose_backend)
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
     if any(b.frame - a.frame > 5 for a, b in zip(frames, frames[1:], strict=False)):
@@ -37,10 +41,13 @@ def analyze_jump(video_path: Path, athlete_height_m: float | None = None) -> Ana
     shoulder_x = clean_trajectory(_midpoint(frames, "left_shoulder", "right_shoulder", "x_px"))
     shoulder_y = clean_trajectory(_midpoint(frames, "left_shoulder", "right_shoulder", "y_px"))
     ankle_y = clean_trajectory(_midpoint(frames, "left_ankle", "right_ankle", "y_px"))
-    foot_y = np.maximum(
-        clean_trajectory(_midpoint(frames, "left_heel", "right_heel", "y_px")),
-        clean_trajectory(_midpoint(frames, "left_foot", "right_foot", "y_px")),
-    )
+    if all("left_heel" in frame.points and "left_foot" in frame.points for frame in frames):
+        foot_y = np.maximum(
+            clean_trajectory(_midpoint(frames, "left_heel", "right_heel", "y_px")),
+            clean_trajectory(_midpoint(frames, "left_foot", "right_foot", "y_px")),
+        )
+    else:
+        foot_y = ankle_y.copy()
 
     scale = None
     if athlete_height_m:
