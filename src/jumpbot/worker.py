@@ -66,6 +66,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
         flag_labels = {
             "low_fps": "низкая частота кадров",
             "low_landmark_visibility": "часть тела распознана неуверенно",
+            "interpolated_pose_gap": "краткое перекрытие спортсмена восстановлено по траектории",
             "ankle_based_ground_contact": "контакт с полом оценён по лодыжкам",
             "unstable_trunk_orientation": "вращение нельзя определить надёжно",
             "implausible_rotation_speed": "скачок позы исказил скорость вращения",
@@ -134,10 +135,22 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.completed_at = datetime.now(UTC)
             await session.commit()
             if user and settings.telegram_bot_token:
+                advice = {
+                    "Pose tracking contains a long gap": (
+                        "Основной спортсмен был перекрыт или пропал из кадра более чем "
+                        "на 0,75 с. Держите его в кадре и по возможности без полного перекрытия."
+                    ),
+                    "Landing was not detected": (
+                        "В ролике нужно оставить не менее 1 секунды после касания льда, "
+                        "стопы и коньки должны быть видны."
+                    ),
+                    "Take-off was not detected": (
+                        "Начните ролик за 1 секунду до отрыва и не обрезайте коньки."
+                    ),
+                }.get(str(exc), str(exc))
                 await _notify_user(
                     user.telegram_user_id,
-                    f"Видео не удалось надёжно проанализировать: {exc}. "
-                    "Попробуйте переснять сбоку.",
+                    f"Видео не удалось надёжно проанализировать. {advice}",
                 )
             return {"status": "rejected", "reason": str(exc)}
         except Exception as exc:

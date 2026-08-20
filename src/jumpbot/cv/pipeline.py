@@ -23,7 +23,7 @@ def _midpoint(
     result = np.full(frame_count, np.nan)
     for frame in frames:
         a, b = frame.points[left], frame.points[right]
-        if min(a.visibility, b.visibility) >= 0.6:
+        if min(a.visibility, b.visibility) >= 0.4:
             result[frame.frame] = (getattr(a, axis) + getattr(b, axis)) / 2
     return result
 
@@ -53,14 +53,16 @@ def _whole_body_com(frames: list[FramePose], axis: str, frame_count: int) -> np.
             if (
                 proximal is None
                 or distal is None
-                or min(proximal.visibility, distal.visibility) < 0.5
+                or min(proximal.visibility, distal.visibility) < 0.35
             ):
                 continue
             proximal_value = getattr(proximal, axis)
             distal_value = getattr(distal, axis)
             weighted += weight * (proximal_value + fraction * (distal_value - proximal_value))
             available_weight += weight
-        if available_weight >= 0.85:
+        # One hidden leg removes about 16% of the segment mass. Requiring 85%
+        # therefore discarded otherwise useful skating frames during rotations.
+        if available_weight >= 0.55:
             result[frame.frame] = weighted / available_weight
     return result
 
@@ -99,7 +101,11 @@ def analyze_jump(
     frames, fps, frame_count = extract_pose(video_path, pose_backend)
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
-    max_pose_gap = max(5, int(0.35 * fps))
+    pose_gaps = [
+        b.frame - a.frame - 1 for a, b in zip(frames, frames[1:], strict=False)
+    ]
+    longest_pose_gap = max(pose_gaps, default=0)
+    max_pose_gap = max(5, int(0.75 * fps))
     if any(
         b.frame - a.frame > max_pose_gap + 1
         for a, b in zip(frames, frames[1:], strict=False)
@@ -151,7 +157,7 @@ def analyze_jump(
         standing = min(len(frames) // 3, max(5, int(0.75 * fps)))
         head_y = np.full(trajectory_frame_count, np.nan)
         for frame in frames:
-            if frame.points["head"].visibility >= 0.6:
+            if frame.points["head"].visibility >= 0.4:
                 head_y[frame.frame] = frame.points["head"].y_px
         head_y = clean_trajectory(head_y, max_gap=max_pose_gap)
         apparent_height = ankle_y[:standing] - head_y[:standing]
@@ -218,6 +224,8 @@ def analyze_jump(
         flags.append("low_fps")
     if visibility < 0.7:
         flags.append("low_landmark_visibility")
+    if longest_pose_gap > int(0.2 * fps):
+        flags.append("interpolated_pose_gap")
     if pose_backend.lower() == "rtmpose":
         flags.append("ankle_based_ground_contact")
     flight_trunk = trunk_length[phases.takeoff : phases.landing + 1]
@@ -258,6 +266,7 @@ def analyze_jump(
     penalty_flags = {
         "low_fps",
         "low_landmark_visibility",
+        "interpolated_pose_gap",
         "unstable_trunk_orientation",
         "implausible_rotation_speed",
         "inconsistent_height_estimates",
