@@ -242,15 +242,18 @@ def analyze_jump(
     velocity = vertical_velocity(com_y_up, fps)
     trunk_angle = body_orientation(hip_x, hip_y_px, shoulder_x, shoulder_y)
     angular_velocity = unwrap_angular_velocity(trunk_angle, fps)
+    rotation_margin = max(1, int(round(0.067 * fps)))
+    rotation_start = max(0, phases.takeoff - rotation_margin)
+    rotation_end = min(trajectory_frame_count - 1, phases.landing + rotation_margin)
     rotation_degrees, rotation_turns, rotation_direction, rotation_speed = rotation_metrics(
-        trunk_angle, angular_velocity, phases.takeoff, phases.landing
+        trunk_angle, angular_velocity, rotation_start, rotation_end
     )
     takeoff_foot_angle = None
     landing_foot_angle = None
     if foot_angle is not None:
         foot_velocity = unwrap_angular_velocity(foot_angle, fps)
         foot_rotation = rotation_metrics(
-            foot_angle, foot_velocity, phases.takeoff, phases.landing
+            foot_angle, foot_velocity, rotation_start, rotation_end
         )
         takeoff_foot_angle = float(
             np.rad2deg(
@@ -276,7 +279,7 @@ def analyze_jump(
     hip_scale = max(float(np.percentile(np.abs(hip_width), 90)), 1.0)
     axial_width = 0.65 * shoulder_width / shoulder_scale + 0.35 * hip_width / hip_scale
     axial_degrees, axial_turns, axial_speed = axial_rotation_metrics(
-        axial_width, fps, phases.takeoff, phases.landing
+        axial_width, fps, rotation_start, rotation_end
     )
     if axial_degrees is not None and (
         rotation_degrees is None or axial_degrees > rotation_degrees
@@ -349,10 +352,10 @@ def analyze_jump(
         for value in (trajectory_height, fitted_height)
         if value is not None and 0.02 <= value <= 2.0
     )
-    jump_height = float(np.median(height_candidates))
+    jump_height = float(fitted_height or np.median(height_candidates))
     if len(height_candidates) > 1 and np.ptp(height_candidates) > 0.25 * jump_height:
         flags.append("inconsistent_height_estimates")
-        jump_height = trajectory_height or fitted_height or flight_height_m
+        jump_height = fitted_height or trajectory_height or flight_height_m
     if scale:
         # The frame derivative is strongly attenuated by pose smoothing at
         # 30 FPS. Use the energy-equivalent vertical take-off speed so the
