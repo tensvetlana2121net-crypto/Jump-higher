@@ -6,6 +6,8 @@ from decimal import Decimal
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from sqlalchemy import select
 
@@ -20,6 +22,10 @@ from jumpbot.worker import analyze_video_task
 
 router = Router()
 settings = get_settings()
+
+
+class HeightSetup(StatesGroup):
+    waiting_for_height = State()
 
 
 async def ensure_user(message: Message) -> User:
@@ -45,7 +51,8 @@ async def ensure_user(message: Message) -> User:
 async def start(message: Message) -> None:
     await ensure_user(message)
     await message.answer(
-        "Пришлите рост командой <code>/height 182</code>, затем отправьте видео прыжка.\n\n"
+        "Отправьте видео прыжка. Затем бот попросит ввести рост спортсмена "
+        "в сантиметрах и автоматически начнёт анализ.\n\n"
         "Снимайте сбоку, держите камеру неподвижно и оставьте стопы в кадре.",
         parse_mode=ParseMode.HTML,
     )
@@ -53,27 +60,9 @@ async def start(message: Message) -> None:
 
 @router.message(Command("height"))
 async def set_height(message: Message) -> None:
-    user = await ensure_user(message)
-    parts = (message.text or "").split()
-    if len(parts) != 2:
-        await message.answer("Пример: /height 182")
-        return
-    try:
-        height = Decimal(parts[1].replace(",", "."))
-    except Exception:
-        await message.answer("Укажите рост числом в сантиметрах.")
-        return
-    if not Decimal("100") <= height <= Decimal("250"):
-        await message.answer("Допустимый диапазон роста: 100–250 см.")
-        return
-    async with SessionLocal() as session:
-        stored = await session.get(User, user.id)
-        assert stored is not None
-        stored.height_cm = height
-        await session.commit()
     await message.answer(
-        f"Рост сохранён для текущего Telegram-аккаунта: {height} см. "
-        "Теперь отправьте видео из этого же чата."
+        "Сначала отправьте видео прыжка. Затем бот попросит ввести рост спортсмена "
+        "в сантиметрах специально для этого анализа. Рост в аккаунте не сохраняется."
     )
 
 
@@ -100,25 +89,68 @@ async def history(message: Message) -> None:
 
 
 @router.message(F.video | F.document)
-async def receive_video(message: Message, bot: Bot) -> None:
-    user = await ensure_user(message)
-    if user.height_cm is None:
-        await message.answer(
-            "Для текущего Telegram-аккаунта рост ещё не сохранён. "
-            "Укажите его в этом же чате командой <code>/height 170</code>, "
-            "дождитесь подтверждения и повторно отправьте видео. "
-            "Без роста высоту по голове, плечам и бёдрам нельзя перевести в сантиметры."
-        )
-        return
+async def receive_video(message: Message, bot: Bot, state: FSMContext) -> None:
     video = message.video or message.document
     if video is None:
         return
-    file_size = video.file_size or 0
+    await state.set_state(HeightSetup.waiting_for_height)
+    await state.update_data(
+        pending_file_id=video.file_id,
+        pending_file_size=video.file_size or 0,
+        pending_mime_type=getattr(video, "mime_type", None) or "video/mp4",
+        pending_file_name=getattr(video, "file_name", None) or "jump.mp4",
+    )
+    await message.answer(
+        "Введите рост спортсмена в сантиметрах одним числом, например: <b>160</b>. "
+        "После этого я автоматически начну анализ уже отправленного видео. "
+        "Рост в аккаунте не сохраняется.",
+        parse_mode=ParseMode.HTML,
+    )
+    return
+
+
+@router.message(HeightSetup.waiting_for_height, F.text)
+async def receive_height_for_pending_video(
+    message: Message, bot: Bot, state: FSMContext
+) -> None:
+    try:
+        height = Decimal((message.text or "").strip().replace(",", "."))
+    except Exception:
+        await message.answer("Введите рост одним числом в сантиметрах, например: 160.")
+        return
+    if not Decimal("100") <= height <= Decimal("250"):
+        await message.answer("Введите рост от 100 до 250 сантиметров.")
+        return
+    user = await ensure_user(message)
+    data = await state.get_data()
+    await state.clear()
+    await message.answer(f"Рост принят для этого анализа: {height} см. Начинаю анализ видео.")
+    await _process_video(
+        message,
+        bot,
+        user,
+        str(data["pending_file_id"]),
+        int(data["pending_file_size"]),
+        str(data["pending_mime_type"]),
+        str(data["pending_file_name"]),
+        height,
+    )
+
+
+async def _process_video(
+    message: Message,
+    bot: Bot,
+    user: User,
+    file_id: str,
+    file_size: int,
+    mime_type: str,
+    name: str,
+    athlete_height_cm: Decimal,
+) -> None:
     max_bytes = settings.max_video_mb * 1024 * 1024
     if file_size <= 0 or file_size > max_bytes:
         await message.answer(f"Максимальный размер — {settings.max_video_mb} МБ.")
         return
-    mime_type = getattr(video, "mime_type", None) or "video/mp4"
     allowed_mime_types = {
         "video/mp4",
         "video/quicktime",
@@ -129,7 +161,6 @@ async def receive_video(message: Message, bot: Bot) -> None:
     if mime_type not in allowed_mime_types:
         await message.answer("Поддерживаются только MP4, MOV, AVI, MKV и WebM.")
         return
-    name = getattr(video, "file_name", None) or "jump.mp4"
     jump_id = uuid.uuid4()
     try:
         path = LocalStorage(settings.storage_dir).video_path(user.id, jump_id, name)
@@ -138,7 +169,7 @@ async def receive_video(message: Message, bot: Bot) -> None:
         return
 
     try:
-        await bot.download(video, destination=path)
+        await bot.download(file_id, destination=path)
         metadata = validate_video_file(path, max_bytes, settings.max_video_seconds)
     except ValueError as exc:
         path.unlink(missing_ok=True)
@@ -163,6 +194,7 @@ async def receive_video(message: Message, bot: Bot) -> None:
             source_file_sha256=sha256_file(path),
             duration_ms=round(metadata.duration_s * 1000),
             calibration_method="athlete_height",
+            metric_data={"athlete_height_cm": float(athlete_height_cm)},
         )
         session.add(jump)
         await session.commit()

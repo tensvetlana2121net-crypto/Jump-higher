@@ -112,7 +112,12 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         source_path = Path(jump.source_file_key or "")
         delete_source = settings.keep_source_video_days == 0
         try:
-            height_m = float(user.height_cm) / 100 if user and user.height_cm else None
+            requested_height_cm = (jump.metric_data or {}).get("athlete_height_cm")
+            height_m = (
+                float(requested_height_cm) / 100
+                if requested_height_cm is not None
+                else None
+            )
             result = analyze_jump(source_path, height_m, settings.pose_backend)
             payload = result.as_dict()
             jump.status = AnalysisStatus.COMPLETED
