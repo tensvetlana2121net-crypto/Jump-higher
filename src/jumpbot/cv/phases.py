@@ -53,7 +53,22 @@ def detect_phases(
         landing_candidates > takeoff + max(2, int(0.15 * fps))
     ]
     if not landing_candidates.size:
-        raise ValueError("Landing was not detected")
+        # On an ice rink the athlete moves across the frame, so perspective can
+        # shift the apparent floor height between take-off and landing. Rebase
+        # contact on the post-apex foot level instead of rejecting the jump.
+        tentative_apex = takeoff + int(np.argmax(hip_y_m[takeoff:]))
+        post_apex = foot_y_px[tentative_apex:]
+        if post_apex.size:
+            landing_floor = float(np.nanpercentile(post_apex, 90))
+            local_contact = foot_y_px >= landing_floor - clearance_px
+            landing_candidates = _sustained_starts(local_contact)
+            landing_candidates = landing_candidates[
+                landing_candidates > max(
+                    tentative_apex, takeoff + max(2, int(0.15 * fps))
+                )
+            ]
+        if not landing_candidates.size:
+            raise ValueError("Landing was not detected")
     landing = int(landing_candidates[0])
     apex = takeoff + int(np.argmax(hip_y_m[takeoff : landing + 1]))
 

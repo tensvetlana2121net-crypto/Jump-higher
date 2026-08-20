@@ -18,3 +18,21 @@ def test_detects_takeoff_and_landing_at_start_of_sustained_runs() -> None:
     assert phases.takeoff == 40
     assert phases.landing == 70
     assert phases.takeoff < phases.apex < phases.landing
+
+
+def test_detects_landing_when_ice_perspective_shifts_floor_level() -> None:
+    fps = 60.0
+    hip = np.ones(100)
+    hip[20:30] = np.linspace(1.0, 0.8, 10)
+    hip[30:40] = np.linspace(0.8, 1.0, 10)
+    flight_time = np.arange(35) / fps
+    hip[40:75] = 1.0 + 3.0 * flight_time - 0.5 * 9.80665 * flight_time**2
+    hip[75:] = hip[74]
+    feet = np.full(100, 500.0)
+    feet[40:75] = 470.0
+    feet[75:] = 485.0  # landing is higher in the image than the initial floor
+
+    phases = detect_phases(hip, feet, fps, body_height_px=800)
+
+    assert phases.takeoff == 40
+    assert phases.landing == 75

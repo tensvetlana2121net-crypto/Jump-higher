@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -85,6 +86,93 @@ def _select_person(
     return points[person], confidence[person]
 
 
+def _person_geometry(points: np.ndarray, scores: np.ndarray) -> tuple[np.ndarray, float]:
+    core = np.asarray(points)[5:17]
+    visible = np.asarray(scores)[5:17] >= 0.35
+    sample = core[visible] if np.count_nonzero(visible) >= 4 else core
+    center = np.median(sample, axis=0)
+    span = np.ptp(sample, axis=0)
+    return center, max(float(np.hypot(*span)), 20.0)
+
+
+@dataclass
+class _PersonTracker:
+    """Keep one athlete selected when other people cross the frame."""
+
+    points: np.ndarray | None = None
+    center: np.ndarray | None = None
+    velocity: np.ndarray | None = None
+    scale: float = 20.0
+    missing_frames: int = 0
+
+    def select(
+        self, keypoints: np.ndarray, scores: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        candidates = np.asarray(keypoints)
+        confidence = np.asarray(scores)
+        if candidates.size == 0 or confidence.size == 0:
+            self.missing_frames += 1
+            return None
+        if candidates.ndim == 2:
+            candidates = candidates[None, ...]
+        if confidence.ndim == 1:
+            confidence = confidence[None, ...]
+
+        geometries = [
+            _person_geometry(candidate, candidate_scores)
+            for candidate, candidate_scores in zip(candidates, confidence, strict=True)
+        ]
+        mean_scores = np.mean(confidence[:, :17], axis=1)
+        if self.center is None:
+            scales = np.array([geometry[1] for geometry in geometries])
+            index = int(np.argmax(mean_scores + 0.25 * scales / np.max(scales)))
+        else:
+            predicted = self.center + (
+                self.velocity if self.velocity is not None else np.zeros(2)
+            ) * (self.missing_frames + 1)
+            costs: list[float] = []
+            for candidate, candidate_scores, (center, scale), confidence_score in zip(
+                candidates, confidence, geometries, mean_scores, strict=True
+            ):
+                normalizer = max(self.scale, scale, 20.0)
+                motion_cost = float(np.linalg.norm(center - predicted) / normalizer)
+                scale_cost = abs(float(np.log(scale / self.scale)))
+                pose_cost = 0.0
+                if self.points is not None:
+                    visible = (candidate_scores[:17] >= 0.35) & np.isfinite(
+                        self.points[:17]
+                    ).all(axis=1)
+                    if np.count_nonzero(visible) >= 4:
+                        current = candidate[:17][visible] - center
+                        previous = self.points[:17][visible] - self.center
+                        pose_cost = float(
+                            np.median(np.linalg.norm(current - previous, axis=1)) / normalizer
+                        )
+                costs.append(
+                    motion_cost + 0.35 * scale_cost + 0.25 * pose_cost - 0.2 * confidence_score
+                )
+            index = int(np.argmin(costs))
+            if costs[index] > 2.5 and self.missing_frames < 12:
+                self.missing_frames += 1
+                return None
+
+        selected_points = candidates[index]
+        selected_scores = confidence[index]
+        new_center, new_scale = geometries[index]
+        if self.center is not None:
+            observed_velocity = (new_center - self.center) / (self.missing_frames + 1)
+            self.velocity = (
+                observed_velocity
+                if self.velocity is None
+                else 0.65 * self.velocity + 0.35 * observed_velocity
+            )
+        self.points = selected_points.copy()
+        self.center = new_center
+        self.scale = new_scale
+        self.missing_frames = 0
+        return selected_points, selected_scores
+
+
 def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]:
     try:
         from rtmlib import BodyWithFeet
@@ -93,6 +181,7 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
 
     capture, fps, declared_frames = _open_video(video_path)
     estimator = BodyWithFeet(mode="balanced", backend="onnxruntime", device="cpu")
+    tracker = _PersonTracker()
     frames: list[FramePose] = []
     frame_index = 0
     try:
@@ -100,7 +189,7 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
             ok, image = capture.read()
             if not ok:
                 break
-            selected = _select_person(*estimator(image))
+            selected = tracker.select(*estimator(image))
             if selected is not None:
                 keypoints, scores = selected
                 points = {

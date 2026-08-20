@@ -99,35 +99,48 @@ def analyze_jump(
     frames, fps, frame_count = extract_pose(video_path, pose_backend)
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
-    if any(b.frame - a.frame > 5 for a, b in zip(frames, frames[1:], strict=False)):
+    max_pose_gap = max(5, int(0.35 * fps))
+    if any(
+        b.frame - a.frame > max_pose_gap + 1
+        for a, b in zip(frames, frames[1:], strict=False)
+    ):
         raise ValueError("Pose tracking contains a long gap")
 
     declared_frame_count = frame_count
     trajectory_frame_count = frames[-1].frame + 1
     hip_x = clean_trajectory(
-        _midpoint(frames, "left_hip", "right_hip", "x_px", trajectory_frame_count)
+        _midpoint(frames, "left_hip", "right_hip", "x_px", trajectory_frame_count),
+        max_gap=max_pose_gap,
     )
     hip_y_px = clean_trajectory(
-        _midpoint(frames, "left_hip", "right_hip", "y_px", trajectory_frame_count)
+        _midpoint(frames, "left_hip", "right_hip", "y_px", trajectory_frame_count),
+        max_gap=max_pose_gap,
     )
     shoulder_x = clean_trajectory(
-        _midpoint(frames, "left_shoulder", "right_shoulder", "x_px", trajectory_frame_count)
+        _midpoint(frames, "left_shoulder", "right_shoulder", "x_px", trajectory_frame_count),
+        max_gap=max_pose_gap,
     )
     shoulder_y = clean_trajectory(
-        _midpoint(frames, "left_shoulder", "right_shoulder", "y_px", trajectory_frame_count)
+        _midpoint(frames, "left_shoulder", "right_shoulder", "y_px", trajectory_frame_count),
+        max_gap=max_pose_gap,
     )
     ankle_y = clean_trajectory(
-        _midpoint(frames, "left_ankle", "right_ankle", "y_px", trajectory_frame_count)
+        _midpoint(frames, "left_ankle", "right_ankle", "y_px", trajectory_frame_count),
+        max_gap=max_pose_gap,
     )
-    com_y_px = clean_trajectory(_whole_body_com(frames, "y_px", trajectory_frame_count))
+    com_y_px = clean_trajectory(
+        _whole_body_com(frames, "y_px", trajectory_frame_count), max_gap=max_pose_gap
+    )
     foot_angle = _foot_orientation(frames, trajectory_frame_count)
     if all("left_heel" in frame.points and "left_foot" in frame.points for frame in frames):
         foot_y = np.maximum(
             clean_trajectory(
-                _midpoint(frames, "left_heel", "right_heel", "y_px", trajectory_frame_count)
+                _midpoint(frames, "left_heel", "right_heel", "y_px", trajectory_frame_count),
+                max_gap=max_pose_gap,
             ),
             clean_trajectory(
-                _midpoint(frames, "left_foot", "right_foot", "y_px", trajectory_frame_count)
+                _midpoint(frames, "left_foot", "right_foot", "y_px", trajectory_frame_count),
+                max_gap=max_pose_gap,
             ),
         )
     else:
@@ -140,7 +153,7 @@ def analyze_jump(
         for frame in frames:
             if frame.points["head"].visibility >= 0.6:
                 head_y[frame.frame] = frame.points["head"].y_px
-        head_y = clean_trajectory(head_y)
+        head_y = clean_trajectory(head_y, max_gap=max_pose_gap)
         apparent_height = ankle_y[:standing] - head_y[:standing]
         scale = scale_from_height(athlete_height_m, apparent_height)
     else:
@@ -173,10 +186,20 @@ def analyze_jump(
             foot_angle, foot_velocity, phases.takeoff, phases.landing
         )
         takeoff_foot_angle = float(
-            np.rad2deg(np.arctan2(np.sin(foot_angle[phases.takeoff]), np.cos(foot_angle[phases.takeoff])))
+            np.rad2deg(
+                np.arctan2(
+                    np.sin(foot_angle[phases.takeoff]),
+                    np.cos(foot_angle[phases.takeoff]),
+                )
+            )
         )
         landing_foot_angle = float(
-            np.rad2deg(np.arctan2(np.sin(foot_angle[phases.landing]), np.cos(foot_angle[phases.landing])))
+            np.rad2deg(
+                np.arctan2(
+                    np.sin(foot_angle[phases.landing]),
+                    np.cos(foot_angle[phases.landing]),
+                )
+            )
         )
         if foot_rotation[0] is not None:
             rotation_degrees, rotation_turns, rotation_direction, rotation_speed = foot_rotation
