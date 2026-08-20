@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import BufferedInputFile
 from celery import Celery
 from PIL import Image, ImageDraw, ImageFont
@@ -345,8 +346,16 @@ async def _notify_user(telegram_user_id: int, text: str) -> None:
 async def _notify_result_card(telegram_user_id: int, result: AnalysisResult) -> None:
     bot = Bot(settings.telegram_bot_token)
     try:
-        image = BufferedInputFile(_result_card_png(result), filename="jump-result.png")
-        await bot.send_photo(telegram_user_id, image)
+        image_bytes = _result_card_png(result)
+        for attempt in range(3):
+            try:
+                image = BufferedInputFile(image_bytes, filename="jump-result.png")
+                await bot.send_photo(telegram_user_id, image, request_timeout=90)
+                return
+            except TelegramNetworkError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(3 * (attempt + 1))
     except Exception:
         logger.exception(
             "Telegram result card delivery failed",
