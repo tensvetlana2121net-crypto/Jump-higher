@@ -65,6 +65,32 @@ def _whole_body_com(frames: list[FramePose], axis: str, frame_count: int) -> np.
     return result
 
 
+def _foot_orientation(frames: list[FramePose], frame_count: int) -> np.ndarray | None:
+    """Directed heel-to-toe angle, combining both visible feet."""
+    raw = np.full(frame_count, np.nan)
+    for frame in frames:
+        angles: list[float] = []
+        for side in ("left", "right"):
+            heel = frame.points.get(f"{side}_heel")
+            toe = frame.points.get(f"{side}_foot")
+            if heel is None or toe is None or min(heel.visibility, toe.visibility) < 0.5:
+                continue
+            dx = toe.x_px - heel.x_px
+            dy_up = heel.y_px - toe.y_px
+            if np.hypot(dx, dy_up) >= 4:
+                angles.append(float(np.arctan2(dy_up, dx)))
+        if angles:
+            raw[frame.frame] = np.arctan2(
+                np.mean(np.sin(angles)), np.mean(np.cos(angles))
+            )
+    valid = np.flatnonzero(np.isfinite(raw))
+    if valid.size < 5:
+        return None
+    unwrapped = np.unwrap(raw[valid])
+    interpolated = np.interp(np.arange(frame_count), valid, unwrapped)
+    return clean_trajectory(interpolated)
+
+
 def analyze_jump(
     video_path: Path,
     athlete_height_m: float | None = None,
@@ -94,6 +120,7 @@ def analyze_jump(
         _midpoint(frames, "left_ankle", "right_ankle", "y_px", trajectory_frame_count)
     )
     com_y_px = clean_trajectory(_whole_body_com(frames, "y_px", trajectory_frame_count))
+    foot_angle = _foot_orientation(frames, trajectory_frame_count)
     if all("left_heel" in frame.points and "left_foot" in frame.points for frame in frames):
         foot_y = np.maximum(
             clean_trajectory(
@@ -138,6 +165,21 @@ def analyze_jump(
     rotation_degrees, rotation_turns, rotation_direction, rotation_speed = rotation_metrics(
         trunk_angle, angular_velocity, phases.takeoff, phases.landing
     )
+    takeoff_foot_angle = None
+    landing_foot_angle = None
+    if foot_angle is not None:
+        foot_velocity = unwrap_angular_velocity(foot_angle, fps)
+        foot_rotation = rotation_metrics(
+            foot_angle, foot_velocity, phases.takeoff, phases.landing
+        )
+        takeoff_foot_angle = float(
+            np.rad2deg(np.arctan2(np.sin(foot_angle[phases.takeoff]), np.cos(foot_angle[phases.takeoff])))
+        )
+        landing_foot_angle = float(
+            np.rad2deg(np.arctan2(np.sin(foot_angle[phases.landing]), np.cos(foot_angle[phases.landing])))
+        )
+        if foot_rotation[0] is not None:
+            rotation_degrees, rotation_turns, rotation_direction, rotation_speed = foot_rotation
     trunk_length = np.hypot(shoulder_x - hip_x, shoulder_y - hip_y_px)
     inclination = np.rad2deg(np.arctan2(np.sin(trunk_angle), np.cos(trunk_angle)))
     takeoff_inclination = float(inclination[phases.takeoff])
@@ -218,6 +260,8 @@ def analyze_jump(
         rotation_degrees=rotation_degrees,
         rotation_turns=rotation_turns,
         rotation_direction=rotation_direction,
+        takeoff_foot_angle_deg=takeoff_foot_angle,
+        landing_foot_angle_deg=landing_foot_angle,
         takeoff_inclination_deg=takeoff_inclination,
         max_inclination_deg=max_inclination,
         confidence_score=confidence,

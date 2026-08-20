@@ -16,7 +16,7 @@ RUN mkdir -p "$TORCH_HOME"
 RUN python -c "import mediapipe as mp; mp.solutions.pose.Pose(model_complexity=2).close()"
 
 # Cache RTMPose weights in the image; production inference needs no internet.
-RUN python -c "from rtmlib import Body; Body(mode='balanced', backend='onnxruntime', device='cpu')"
+RUN python -c "from rtmlib import BodyWithFeet; BodyWithFeet(mode='balanced', backend='onnxruntime', device='cpu')"
 
 COPY alembic.ini ./
 COPY migrations ./migrations

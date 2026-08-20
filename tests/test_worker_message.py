@@ -19,6 +19,8 @@ def test_analysis_message_contains_extended_metrics() -> None:
         rotation_degrees=360.0,
         rotation_turns=1.0,
         rotation_direction="clockwise",
+        takeoff_foot_angle_deg=18.0,
+        landing_foot_angle_deg=-6.0,
         takeoff_inclination_deg=12.0,
         max_inclination_deg=18.0,
         confidence_score=0.91,
@@ -32,4 +34,6 @@ def test_analysis_message_contains_extended_metrics() -> None:
     assert "125.0 °/с" in message
     assert "360.0°" in message
     assert "1.00 оборота" in message
+    assert "Угол стоп при отрыве: +18.0°" in message
+    assert "Угол стоп при приземлении: -6.0°" in message
     assert "91%" in message

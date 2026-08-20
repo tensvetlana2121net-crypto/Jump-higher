@@ -51,6 +51,8 @@ class AnalysisResult:
     rotation_degrees: float | None
     rotation_turns: float | None
     rotation_direction: str | None
+    takeoff_foot_angle_deg: float | None
+    landing_foot_angle_deg: float | None
     takeoff_inclination_deg: float
     max_inclination_deg: float
     confidence_score: float
@@ -85,9 +87,11 @@ class AnalysisResult:
             "rotation_degrees": self.rotation_degrees,
             "rotation_turns": self.rotation_turns,
             "rotation_direction": self.rotation_direction,
+            "takeoff_foot_angle_deg": self.takeoff_foot_angle_deg,
+            "landing_foot_angle_deg": self.landing_foot_angle_deg,
             "takeoff_inclination_deg": self.takeoff_inclination_deg,
             "max_inclination_deg": self.max_inclination_deg,
             "confidence_score": self.confidence_score,
             "quality_flags": self.quality_flags,
-            "algorithm_version": "0.3.0",
+            "algorithm_version": "0.4.0",
         }

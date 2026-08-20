@@ -42,6 +42,17 @@ COCO_INDEXES = {
     "right_ankle": 16,
 }
 
+# Halpe-26 keypoint order used by RTMPose BodyWithFeet.
+HALPE26_INDEXES = {
+    **COCO_INDEXES,
+    "left_foot": 20,
+    "right_foot": 21,
+    "left_small_toe": 22,
+    "right_small_toe": 23,
+    "left_heel": 24,
+    "right_heel": 25,
+}
+
 
 def _open_video(video_path: Path):
     try:
@@ -76,12 +87,12 @@ def _select_person(
 
 def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]:
     try:
-        from rtmlib import Body
+        from rtmlib import BodyWithFeet
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("RTMPose is not installed; install JumpBot with the 'cv' extra") from exc
 
     capture, fps, declared_frames = _open_video(video_path)
-    estimator = Body(mode="balanced", backend="onnxruntime", device="cpu")
+    estimator = BodyWithFeet(mode="balanced", backend="onnxruntime", device="cpu")
     frames: list[FramePose] = []
     frame_index = 0
     try:
@@ -98,7 +109,7 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
                         y_px=float(keypoints[index, 1]),
                         visibility=float(scores[index]),
                     )
-                    for name, index in COCO_INDEXES.items()
+                    for name, index in HALPE26_INDEXES.items()
                 }
                 frames.append(FramePose(frame_index, frame_index / fps, points))
             frame_index += 1

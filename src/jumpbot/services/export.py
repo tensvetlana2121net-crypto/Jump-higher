@@ -17,6 +17,8 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
         "rotation_degrees",
         "rotation_turns",
         "takeoff_inclination_deg",
+        "takeoff_foot_angle_deg",
+        "landing_foot_angle_deg",
         "confidence_score",
     ]
     writer = csv.DictWriter(buffer, fieldnames=fields)
@@ -25,7 +27,13 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
         row = {
             field: getattr(jump, field)
             for field in fields
-            if field not in {"rotation_degrees", "rotation_turns", "takeoff_inclination_deg"}
+            if field not in {
+                "rotation_degrees",
+                "rotation_turns",
+                "takeoff_inclination_deg",
+                "takeoff_foot_angle_deg",
+                "landing_foot_angle_deg",
+            }
         }
         metrics = jump.metric_data or {}
         row.update(
@@ -33,6 +41,8 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
                 "rotation_degrees": metrics.get("rotation_degrees"),
                 "rotation_turns": metrics.get("rotation_turns"),
                 "takeoff_inclination_deg": metrics.get("takeoff_inclination_deg"),
+                "takeoff_foot_angle_deg": metrics.get("takeoff_foot_angle_deg"),
+                "landing_foot_angle_deg": metrics.get("landing_foot_angle_deg"),
             }
         )
         writer.writerow(row)

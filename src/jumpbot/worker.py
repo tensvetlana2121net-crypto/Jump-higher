@@ -46,13 +46,17 @@ def _format_analysis_message(result: AnalysisResult) -> str:
         )
     if result.max_angular_velocity_dps is not None:
         lines.append(f"Максимальная скорость вращения: {result.max_angular_velocity_dps:.1f} °/с")
+    if result.takeoff_foot_angle_deg is not None:
+        lines.append(f"Угол стоп при отрыве: {result.takeoff_foot_angle_deg:+.1f}°")
+    if result.landing_foot_angle_deg is not None:
+        lines.append(f"Угол стоп при приземлении: {result.landing_foot_angle_deg:+.1f}°")
     if result.rotation_degrees is not None and result.rotation_turns is not None:
         direction = {
             "clockwise": "по часовой стрелке",
             "counterclockwise": "против часовой стрелки",
         }.get(result.rotation_direction, "направление не определено")
         lines.append(
-            f"Вращение: {result.rotation_degrees:.1f}° "
+            f"Вращение по ориентации стоп: {result.rotation_degrees:.1f}° "
             f"({result.rotation_turns:.2f} оборота), {direction}"
         )
     else:
