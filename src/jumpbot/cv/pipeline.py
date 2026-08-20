@@ -349,6 +349,11 @@ def analyze_jump(
         jump_height = trajectory_height or fitted_height or flight_height_m
     if not scale:
         flags.append("height_requires_athlete_height")
+    else:
+        # The frame derivative is strongly attenuated by pose smoothing at
+        # 30 FPS. Use the energy-equivalent vertical take-off speed so the
+        # reported speed remains physically consistent with the measured rise.
+        takeoff_velocity = float(np.sqrt(2.0 * 9.80665 * jump_height))
 
     penalty_flags = {
         "low_fps",

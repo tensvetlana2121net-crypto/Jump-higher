@@ -38,7 +38,10 @@ def _format_analysis_message(result: AnalysisResult) -> str:
     if result.height_displacement_m is not None:
         lines.append(f"Подъём центра масс: {result.height_displacement_m * 100:.1f} см")
     if result.takeoff_velocity_mps is not None:
-        lines.append(f"Скорость в момент отрыва: {result.takeoff_velocity_mps:.2f} м/с")
+        lines.append(
+            "Расчётная вертикальная скорость взлёта: "
+            f"{result.takeoff_velocity_mps:.2f} м/с"
+        )
     if result.max_propulsion_velocity_mps is not None:
         lines.append(
             "Максимальная вертикальная скорость при отталкивании: "
