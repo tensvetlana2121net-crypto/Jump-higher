@@ -71,7 +71,10 @@ async def set_height(message: Message) -> None:
         assert stored is not None
         stored.height_cm = height
         await session.commit()
-    await message.answer(f"Рост сохранён: {height} см.")
+    await message.answer(
+        f"Рост сохранён для текущего Telegram-аккаунта: {height} см. "
+        "Теперь отправьте видео из этого же чата."
+    )
 
 
 @router.message(Command("history"))
@@ -101,7 +104,9 @@ async def receive_video(message: Message, bot: Bot) -> None:
     user = await ensure_user(message)
     if user.height_cm is None:
         await message.answer(
-            "Сначала укажите рост спортсмена командой <code>/height 170</code>. "
+            "Для текущего Telegram-аккаунта рост ещё не сохранён. "
+            "Укажите его в этом же чате командой <code>/height 170</code>, "
+            "дождитесь подтверждения и повторно отправьте видео. "
             "Без роста высоту по голове, плечам и бёдрам нельзя перевести в сантиметры."
         )
         return
