@@ -32,9 +32,6 @@ def detect_phases(
     candidates = np.flatnonzero(movement)
     start = int(candidates[0]) if candidates.size else 0
 
-    search_end = min(len(hip_y_m) - 1, start + int(2.5 * fps))
-    bottom = start + int(np.argmin(hip_y_m[start : search_end + 1]))
-
     if floor_y_px is None:
         floor_y_px = float(np.nanpercentile(foot_y_px[:baseline_count], 90))
     clearance_px = max(4.0, 0.008 * body_height_px) if body_height_px else 4.0
@@ -42,34 +39,46 @@ def detect_phases(
 
     # Require three consecutive airborne/contact frames to avoid single-frame noise.
     takeoff_candidates = _sustained_starts(airborne)
-    takeoff_candidates = takeoff_candidates[takeoff_candidates > bottom]
     if not takeoff_candidates.size:
         raise ValueError("Take-off was not detected")
-    takeoff = int(takeoff_candidates[0])
 
-    contact = ~airborne
-    landing_candidates = _sustained_starts(contact)
-    landing_candidates = landing_candidates[
-        landing_candidates > takeoff + max(2, int(0.15 * fps))
-    ]
-    if not landing_candidates.size:
-        # On an ice rink the athlete moves across the frame, so perspective can
-        # shift the apparent floor height between take-off and landing. Rebase
-        # contact on the post-apex foot level instead of rejecting the jump.
-        tentative_apex = takeoff + int(np.argmax(hip_y_m[takeoff:]))
-        post_apex = foot_y_px[tentative_apex:]
-        if post_apex.size:
-            landing_floor = float(np.nanpercentile(post_apex, 90))
-            local_contact = foot_y_px >= landing_floor - clearance_px
-            landing_candidates = _sustained_starts(local_contact)
-            landing_candidates = landing_candidates[
-                landing_candidates > max(
-                    tentative_apex, takeoff + max(2, int(0.15 * fps))
+    # Skaters may lift one foot repeatedly before the jump. Evaluate every
+    # sustained airborne interval and choose the one with the largest COM rise,
+    # then locate countermovement only in the second preceding that take-off.
+    contact_starts = _sustained_starts(~airborne)
+    minimum_flight = max(2, int(0.15 * fps))
+    candidates: list[tuple[float, int, int]] = []
+    for candidate in takeoff_candidates:
+        possible_landings = contact_starts[contact_starts > candidate + minimum_flight]
+        if not possible_landings.size:
+            tentative_apex = candidate + int(np.argmax(hip_y_m[candidate:]))
+            post_apex = foot_y_px[tentative_apex:]
+            if post_apex.size:
+                landing_floor = float(np.nanpercentile(post_apex, 90))
+                local_contact_starts = _sustained_starts(
+                    foot_y_px >= landing_floor - clearance_px
                 )
-            ]
-        if not landing_candidates.size:
-            raise ValueError("Landing was not detected")
-    landing = int(landing_candidates[0])
+                possible_landings = local_contact_starts[
+                    local_contact_starts > max(
+                        tentative_apex, candidate + minimum_flight
+                    )
+                ]
+            if not possible_landings.size:
+                continue
+        candidate_landing = int(possible_landings[0])
+        rise = float(
+            np.max(hip_y_m[candidate : candidate_landing + 1]) - hip_y_m[candidate]
+        )
+        candidates.append((rise, int(candidate), candidate_landing))
+    if not candidates:
+        raise ValueError("Landing was not detected")
+    _, takeoff, landing = max(candidates, key=lambda item: item[0])
+
+    bottom_search_start = max(start, takeoff - int(fps))
+    bottom = bottom_search_start + int(
+        np.argmin(hip_y_m[bottom_search_start : takeoff + 1])
+    )
+
     apex = takeoff + int(np.argmax(hip_y_m[takeoff : landing + 1]))
 
     if velocity[takeoff] < -0.2:

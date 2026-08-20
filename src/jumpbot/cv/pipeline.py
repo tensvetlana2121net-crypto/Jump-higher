@@ -28,6 +28,22 @@ def _midpoint(
     return result
 
 
+def _lowest_visible(
+    frames: list[FramePose], names: tuple[str, ...], axis: str, frame_count: int
+) -> np.ndarray:
+    """Lowest visible point in image coordinates, used for ice contact."""
+    result = np.full(frame_count, np.nan)
+    for frame in frames:
+        values = [
+            getattr(frame.points[name], axis)
+            for name in names
+            if name in frame.points and frame.points[name].visibility >= 0.4
+        ]
+        if values:
+            result[frame.frame] = max(values)
+    return result
+
+
 def _whole_body_com(frames: list[FramePose], axis: str, frame_count: int) -> np.ndarray:
     """Approximate whole-body COM using standard segment mass proportions."""
     result = np.full(frame_count, np.nan)
@@ -131,7 +147,12 @@ def analyze_jump(
         max_gap=max_pose_gap,
     )
     ankle_y = clean_trajectory(
-        _midpoint(frames, "left_ankle", "right_ankle", "y_px", trajectory_frame_count),
+        _lowest_visible(
+            frames,
+            ("left_ankle", "right_ankle"),
+            "y_px",
+            trajectory_frame_count,
+        ),
         max_gap=max_pose_gap,
     )
     raw_com_y_px = _whole_body_com(frames, "y_px", trajectory_frame_count)
@@ -148,19 +169,14 @@ def analyze_jump(
     foot_fallback_used = False
     if all("left_heel" in frame.points and "left_foot" in frame.points for frame in frames):
         try:
-            foot_y = np.maximum(
-                clean_trajectory(
-                    _midpoint(
-                        frames, "left_heel", "right_heel", "y_px", trajectory_frame_count
-                    ),
-                    max_gap=max_pose_gap,
+            foot_y = clean_trajectory(
+                _lowest_visible(
+                    frames,
+                    ("left_heel", "right_heel", "left_foot", "right_foot"),
+                    "y_px",
+                    trajectory_frame_count,
                 ),
-                clean_trajectory(
-                    _midpoint(
-                        frames, "left_foot", "right_foot", "y_px", trajectory_frame_count
-                    ),
-                    max_gap=max_pose_gap,
-                ),
+                max_gap=max_pose_gap,
             )
         except ValueError:
             foot_y = ankle_y.copy()

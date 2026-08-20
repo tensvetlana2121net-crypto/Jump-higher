@@ -36,3 +36,22 @@ def test_detects_landing_when_ice_perspective_shifts_floor_level() -> None:
 
     assert phases.takeoff == 40
     assert phases.landing == 75
+
+
+def test_ignores_deeper_crouch_after_landing() -> None:
+    fps = 30.0
+    hip = np.ones(100)
+    hip[25:35] = np.linspace(1.0, 0.85, 10)
+    hip[35:45] = np.linspace(0.85, 1.0, 10)
+    flight_time = np.arange(18) / fps
+    hip[45:63] = 1.0 + 2.8 * flight_time - 0.5 * 9.80665 * flight_time**2
+    hip[63:80] = np.linspace(0.95, 0.70, 17)  # deeper landing crouch
+    hip[80:] = 0.70
+    feet = np.full(100, 500.0)
+    feet[45:63] = 475.0
+
+    phases = detect_phases(hip, feet, fps, body_height_px=500)
+
+    assert phases.takeoff == 45
+    assert phases.landing == 63
+    assert phases.countermovement_bottom < phases.takeoff
