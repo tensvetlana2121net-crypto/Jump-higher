@@ -199,7 +199,7 @@ async def _process_video(
         session.add(jump)
         await session.commit()
     analyze_video_task.delay(str(jump_id))
-    await message.answer(f"Видео принято. Номер анализа: <code>{jump_id}</code>")
+    await message.answer("Видео принято. Анализирую!")
 
 
 async def main() -> None:

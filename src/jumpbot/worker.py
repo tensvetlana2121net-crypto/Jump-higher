@@ -65,13 +65,23 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             f"{result.landing_foot_angle_deg:+.1f}°"
         )
     if result.rotation_degrees is not None and result.rotation_turns is not None:
-        direction = {
-            "clockwise": "по часовой стрелке",
-            "counterclockwise": "против часовой стрелки",
-        }.get(result.rotation_direction, "направление не определено")
+        if result.fps < 50:
+            displayed_degrees = round(result.rotation_degrees / 10.0) * 10.0
+            uncertainty = (
+                round((result.max_angular_velocity_dps or 0.0) / result.fps / 5.0) * 5.0
+            )
+            lines.append(
+                f"Осевое вращение корпуса: ≈{displayed_degrees:.0f}° "
+                f"({displayed_degrees / 360.0:.2f} оборота), "
+                f"погрешность около ±{max(5.0, uncertainty):.0f}°"
+            )
+        else:
+            lines.append(
+                f"Осевое вращение корпуса: {result.rotation_degrees:.1f}° "
+                f"({result.rotation_turns:.2f} оборота)"
+            )
         lines.append(
-            f"Осевое вращение корпуса: {result.rotation_degrees:.1f}° "
-            f"({result.rotation_turns:.2f} оборота), {direction}"
+            "Направление вращения по одному 2D-видео надёжно не определяется."
         )
     else:
         lines.append("Выраженное вращение: не обнаружено")
