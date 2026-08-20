@@ -55,3 +55,21 @@ def test_ignores_deeper_crouch_after_landing() -> None:
     assert phases.takeoff == 45
     assert phases.landing == 63
     assert phases.countermovement_bottom < phases.takeoff
+
+
+def test_uses_blade_deceleration_before_deep_crouch() -> None:
+    fps = 30.0
+    hip = np.ones(100)
+    time = np.arange(44) / fps
+    hip[20:64] = 1.0 + 2.0 * time - 0.5 * 3.0 * time**2
+    hip[64:] = np.linspace(0.95, 0.70, 36)
+    feet = np.full(100, 550.0)
+    feet[20:52] = np.concatenate(
+        (np.linspace(540, 515, 12), np.linspace(515, 552, 20))
+    )
+    feet[52:55] = [552.0, 552.5, 553.0]
+    feet[55:] = np.linspace(554, 580, 45)
+
+    phases = detect_phases(hip, feet, fps, floor_y_px=550.0, body_height_px=500)
+
+    assert phases.landing <= 54

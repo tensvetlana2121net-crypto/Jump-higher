@@ -74,7 +74,27 @@ def detect_phases(
         raise ValueError("Landing was not detected")
     _, takeoff, landing = max(candidates, key=lambda item: item[0])
 
-    bottom_search_start = max(start, takeoff - int(fps))
+    # The blade can touch the ice before the pose settles at the new perspective
+    # floor level. Detect the first sharp deceleration of the descending foot;
+    # otherwise a deep landing crouch is mistaken for extra flight time.
+    provisional_apex = takeoff + int(np.argmax(hip_y_m[takeoff : landing + 1]))
+    foot_steps = np.diff(foot_y_px)
+    quiet_step_px = max(1.0, 0.003 * body_height_px) if body_height_px else 1.0
+    for index in range(provisional_apex + 2, max(provisional_apex + 2, landing - 2)):
+        descent = foot_y_px[index] - float(np.min(foot_y_px[provisional_apex:index]))
+        recent_speed = foot_steps[max(provisional_apex, index - 5) : index]
+        quiet_window = foot_steps[index : index + 3]
+        if (
+            descent >= 2 * clearance_px
+            and recent_speed.size
+            and float(np.max(recent_speed)) >= 2 * quiet_step_px
+            and quiet_window.size == 3
+            and float(np.mean(np.abs(quiet_window))) <= quiet_step_px
+        ):
+            landing = index
+            break
+
+    bottom_search_start = max(0, min(start, takeoff), takeoff - int(fps))
     bottom = bottom_search_start + int(
         np.argmin(hip_y_m[bottom_search_start : takeoff + 1])
     )
