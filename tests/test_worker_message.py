@@ -1,5 +1,5 @@
 from jumpbot.cv.types import AnalysisResult, PhaseFrames
-from jumpbot.worker import _format_analysis_message
+from jumpbot.worker import _format_analysis_message, _result_card_png
 
 
 def test_analysis_message_contains_extended_metrics() -> None:
@@ -39,3 +39,7 @@ def test_analysis_message_contains_extended_metrics() -> None:
     assert "Ориентация конька при отрыве относительно горизонта кадра: +18.0°" in message
     assert "Ориентация конька при приземлении относительно горизонта кадра: -6.0°" in message
     assert "91%" in message
+
+    card = _result_card_png(result)
+    assert card.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(card) > 10_000

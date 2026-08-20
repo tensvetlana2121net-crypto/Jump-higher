@@ -3,10 +3,13 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 from celery import Celery
+from PIL import Image, ImageDraw, ImageFont
 
 from jumpbot.config import get_settings
 from jumpbot.cv.pipeline import analyze_jump
@@ -18,6 +21,116 @@ settings = get_settings()
 celery_app = Celery("jumpbot", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.update(task_track_started=True, task_time_limit=300, task_soft_time_limit=270)
 logger = logging.getLogger(__name__)
+
+
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    names = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        if bold
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+    )
+    for name in names:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _result_card_png(result: AnalysisResult) -> bytes:
+    image = Image.new("RGB", (1080, 1450), "#F5F3EF")
+    draw = ImageDraw.Draw(image)
+    title_font = _font(48, bold=True)
+    label_font = _font(27)
+    value_font = _font(43, bold=True)
+    footer_font = _font(34, bold=True)
+
+    if result.fps < 50 and result.rotation_degrees is not None:
+        rotation_degrees = round(result.rotation_degrees / 10.0) * 10.0
+        rotation_value = f"≈{rotation_degrees:.0f}°"
+        turns_value = f"≈{rotation_degrees / 360.0:.2f}"
+    else:
+        rotation_value = (
+            f"{result.rotation_degrees:.1f}°"
+            if result.rotation_degrees is not None
+            else "—"
+        )
+        turns_value = (
+            f"{result.rotation_turns:.2f}"
+            if result.rotation_turns is not None
+            else "—"
+        )
+
+    height = result.height_ballistic_m or result.jump_height_m
+    metrics = (
+        ("Высота по параболе полёта", f"{height * 100:.1f} см"),
+        (
+            "Подъём центра масс",
+            f"{result.height_displacement_m * 100:.1f} см"
+            if result.height_displacement_m is not None
+            else "—",
+        ),
+        (
+            "Вертикальная скорость взлёта",
+            f"{result.takeoff_velocity_mps:.2f} м/с"
+            if result.takeoff_velocity_mps is not None
+            else "—",
+        ),
+        (
+            "Скорость при отталкивании",
+            f"{result.max_propulsion_velocity_mps:.2f} м/с"
+            if result.max_propulsion_velocity_mps is not None
+            else "—",
+        ),
+        ("Наклон до отрыва", f"{result.max_inclination_deg:.1f}°"),
+        ("Осевое вращение корпуса", rotation_value),
+        ("Количество оборотов", turns_value),
+        (
+            "Скорость вращения",
+            f"{result.max_angular_velocity_dps:.0f}°/с"
+            if result.max_angular_velocity_dps is not None
+            else "—",
+        ),
+        (
+            "Частота вращения",
+            f"{result.max_angular_velocity_dps / 6.0:.0f} об/мин"
+            if result.max_angular_velocity_dps is not None
+            else "—",
+        ),
+        ("Наклон при отрыве", f"{result.takeoff_inclination_deg:+.1f}°"),
+    )
+    colors = ("#DDEBE6", "#E8E2F0", "#E9E5D2", "#DCE7F2", "#F0E0DC")
+
+    draw.text((60, 55), "Анализ прыжка", fill="#35443F", font=title_font)
+    for index, (label, value) in enumerate(metrics):
+        column, row = index % 2, index // 2
+        left = 60 + column * 500
+        top = 155 + row * 220
+        draw.rounded_rectangle(
+            (left, top, left + 460, top + 185),
+            radius=28,
+            fill=colors[index % len(colors)],
+        )
+        draw.multiline_text(
+            (left + 28, top + 24),
+            label,
+            fill="#52615C",
+            font=label_font,
+            spacing=5,
+        )
+        draw.text((left + 28, top + 112), value, fill="#263833", font=value_font)
+
+    draw.rounded_rectangle((60, 1285, 1020, 1385), radius=30, fill="#D7E7DF")
+    footer = "Отличный результат! Попробуй ещё раз!"
+    footer_box = draw.textbbox((0, 0), footer, font=footer_font)
+    footer_width = footer_box[2] - footer_box[0]
+    draw.text(
+        ((1080 - footer_width) / 2, 1313), footer, fill="#35443F", font=footer_font
+    )
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 def _format_analysis_message(result: AnalysisResult) -> str:
@@ -156,7 +269,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.completed_at = datetime.now(UTC)
             await session.commit()
             if user and settings.telegram_bot_token:
-                await _notify_user(user.telegram_user_id, _format_analysis_message(result))
+                await _notify_result_card(user.telegram_user_id, result)
             return payload
         except ValueError as exc:
             jump.status = AnalysisStatus.REJECTED
@@ -223,6 +336,20 @@ async def _notify_user(telegram_user_id: int, text: str) -> None:
     except Exception:
         logger.exception(
             "Telegram notification failed",
+            extra={"telegram_user_id": telegram_user_id},
+        )
+    finally:
+        await bot.session.close()
+
+
+async def _notify_result_card(telegram_user_id: int, result: AnalysisResult) -> None:
+    bot = Bot(settings.telegram_bot_token)
+    try:
+        image = BufferedInputFile(_result_card_png(result), filename="jump-result.png")
+        await bot.send_photo(telegram_user_id, image)
+    except Exception:
+        logger.exception(
+            "Telegram result card delivery failed",
             extra={"telegram_user_id": telegram_user_id},
         )
     finally:
