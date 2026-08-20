@@ -32,6 +32,7 @@ def test_analysis_message_contains_extended_metrics() -> None:
     assert "2.45 м/с" in message
     assert "2.80 м/с" in message
     assert "125.0 °/с" in message
+    assert "21 об/мин" in message
     assert "360.0°" in message
     assert "1.00 оборота" in message
     assert "Угол стоп при отрыве: +18.0°" in message

@@ -45,7 +45,12 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             f"{result.max_propulsion_velocity_mps:.2f} м/с"
         )
     if result.max_angular_velocity_dps is not None:
-        lines.append(f"Максимальная скорость вращения: {result.max_angular_velocity_dps:.1f} °/с")
+        lines.append(
+            f"Средняя угловая скорость вращения: {result.max_angular_velocity_dps:.1f} °/с"
+        )
+        lines.append(
+            f"Частота вращения: {result.max_angular_velocity_dps / 6.0:.0f} об/мин"
+        )
     if result.takeoff_foot_angle_deg is not None:
         lines.append(f"Угол стоп при отрыве: {result.takeoff_foot_angle_deg:+.1f}°")
     if result.landing_foot_angle_deg is not None:
@@ -72,6 +77,9 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             "unstable_trunk_orientation": "вращение нельзя определить надёжно",
             "implausible_rotation_speed": "скачок позы исказил скорость вращения",
             "inconsistent_height_estimates": "способы расчёта высоты расходятся",
+            "height_requires_athlete_height": (
+                "для высоты по голове, плечам и бёдрам укажите рост командой /height"
+            ),
         }
         labels = [flag_labels.get(flag, flag) for flag in result.quality_flags]
         lines.append("Предупреждения качества: " + "; ".join(labels))

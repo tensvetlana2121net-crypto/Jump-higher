@@ -208,13 +208,15 @@ def analyze_jump(
         foot_y = ankle_y.copy()
         foot_fallback_used = True
 
+    head_y = np.full(trajectory_frame_count, np.nan)
+    for frame in frames:
+        if frame.points["head"].visibility >= 0.4:
+            head_y[frame.frame] = frame.points["head"].y_px
+    head_y = clean_trajectory(head_y, max_gap=max_pose_gap)
+
     scale = None
     if athlete_height_m:
         standing = min(len(frames) // 3, max(5, int(0.75 * fps)))
-        head_y = np.full(trajectory_frame_count, np.nan)
-        for frame in frames:
-            if frame.points["head"].visibility >= 0.4:
-                head_y[frame.frame] = frame.points["head"].y_px
         apparent_height = ankle_y[:standing] - head_y[:standing]
         scale = scale_from_height(athlete_height_m, apparent_height)
     else:
@@ -313,7 +315,21 @@ def analyze_jump(
         standing_frames = max(3, min(phases.start, int(0.5 * fps)))
         baseline = float(np.median(com_y_up[:standing_frames]))
         displacement = float(com_y_up[phases.apex] - baseline)
-        trajectory_height = float(com_y_up[phases.apex] - com_y_up[phases.takeoff])
+        body_rises = []
+        for y_px in (head_y, shoulder_y, hip_y_px):
+            y_up = -y_px * scale
+            rise = float(
+                np.max(y_up[phases.takeoff : phases.landing + 1])
+                - y_up[phases.takeoff]
+            )
+            if 0.02 <= rise <= 1.0:
+                body_rises.append(rise)
+        if len(body_rises) >= 2:
+            trajectory_height = float(np.median(body_rises))
+        else:
+            trajectory_height = float(
+                com_y_up[phases.apex] - com_y_up[phases.takeoff]
+            )
         fitted_height = ballistic_height(
             com_y_up[phases.takeoff : phases.landing + 1], fps
         )
@@ -330,7 +346,9 @@ def analyze_jump(
     jump_height = float(np.median(height_candidates))
     if len(height_candidates) > 1 and np.ptp(height_candidates) > 0.25 * jump_height:
         flags.append("inconsistent_height_estimates")
-        jump_height = flight_height_m
+        jump_height = trajectory_height or fitted_height or flight_height_m
+    if not scale:
+        flags.append("height_requires_athlete_height")
 
     penalty_flags = {
         "low_fps",

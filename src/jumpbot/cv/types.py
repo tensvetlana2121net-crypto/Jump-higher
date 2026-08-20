@@ -84,6 +84,11 @@ class AnalysisResult:
             "takeoff_velocity_mps": self.takeoff_velocity_mps,
             "max_propulsion_velocity_mps": self.max_propulsion_velocity_mps,
             "max_angular_velocity_dps": self.max_angular_velocity_dps,
+            "rotation_frequency_rpm": (
+                self.max_angular_velocity_dps / 6.0
+                if self.max_angular_velocity_dps is not None
+                else None
+            ),
             "rotation_degrees": self.rotation_degrees,
             "rotation_turns": self.rotation_turns,
             "rotation_direction": self.rotation_direction,

@@ -94,6 +94,16 @@ def detect_phases(
             landing = index
             break
 
+    apex = takeoff + int(np.argmax(hip_y_m[takeoff : landing + 1]))
+    ascent_frames = apex - takeoff
+    descent_frames = landing - apex
+    # A take-off detected much earlier than the time-reversed descent is
+    # usually a gliding blade that RTMPose placed a few pixels above the ice.
+    # Free-flight COM motion cannot spend substantially longer rising than
+    # falling to a normal (usually lower) landing posture.
+    if descent_frames >= 2 and ascent_frames > 1.25 * descent_frames:
+        takeoff = max(0, apex - descent_frames)
+
     bottom_search_start = max(0, min(start, takeoff), takeoff - int(fps))
     bottom = bottom_search_start + int(
         np.argmin(hip_y_m[bottom_search_start : takeoff + 1])

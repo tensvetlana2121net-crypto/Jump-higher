@@ -73,3 +73,19 @@ def test_uses_blade_deceleration_before_deep_crouch() -> None:
     phases = detect_phases(hip, feet, fps, floor_y_px=550.0, body_height_px=500)
 
     assert phases.landing <= 54
+
+
+def test_refines_implausibly_early_takeoff_from_flight_symmetry() -> None:
+    fps = 30.0
+    hip = np.ones(80)
+    hip[20:41] = np.linspace(1.0, 1.3, 21)
+    hip[41:49] = np.linspace(1.3, 1.5, 8)
+    hip[49:57] = np.linspace(1.5, 1.25, 8)
+    feet = np.full(80, 500.0)
+    feet[36:57] = 480.0
+
+    phases = detect_phases(hip, feet, fps, body_height_px=500)
+
+    assert phases.apex == 48
+    assert phases.landing == 57
+    assert phases.takeoff == 39
