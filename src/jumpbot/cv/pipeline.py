@@ -134,23 +134,40 @@ def analyze_jump(
         _midpoint(frames, "left_ankle", "right_ankle", "y_px", trajectory_frame_count),
         max_gap=max_pose_gap,
     )
-    com_y_px = clean_trajectory(
-        _whole_body_com(frames, "y_px", trajectory_frame_count), max_gap=max_pose_gap
-    )
+    raw_com_y_px = _whole_body_com(frames, "y_px", trajectory_frame_count)
+    com_fallback_used = bool(np.count_nonzero(~np.isfinite(raw_com_y_px)))
+    valid_com = np.isfinite(raw_com_y_px)
+    if np.count_nonzero(valid_com) < 3:
+        raw_com_y_px = hip_y_px.copy()
+        com_fallback_used = True
+    elif not valid_com.all():
+        hip_offset = float(np.median(raw_com_y_px[valid_com] - hip_y_px[valid_com]))
+        raw_com_y_px[~valid_com] = hip_y_px[~valid_com] + hip_offset
+    com_y_px = clean_trajectory(raw_com_y_px, max_gap=max_pose_gap)
     foot_angle = _foot_orientation(frames, trajectory_frame_count)
+    foot_fallback_used = False
     if all("left_heel" in frame.points and "left_foot" in frame.points for frame in frames):
-        foot_y = np.maximum(
-            clean_trajectory(
-                _midpoint(frames, "left_heel", "right_heel", "y_px", trajectory_frame_count),
-                max_gap=max_pose_gap,
-            ),
-            clean_trajectory(
-                _midpoint(frames, "left_foot", "right_foot", "y_px", trajectory_frame_count),
-                max_gap=max_pose_gap,
-            ),
-        )
+        try:
+            foot_y = np.maximum(
+                clean_trajectory(
+                    _midpoint(
+                        frames, "left_heel", "right_heel", "y_px", trajectory_frame_count
+                    ),
+                    max_gap=max_pose_gap,
+                ),
+                clean_trajectory(
+                    _midpoint(
+                        frames, "left_foot", "right_foot", "y_px", trajectory_frame_count
+                    ),
+                    max_gap=max_pose_gap,
+                ),
+            )
+        except ValueError:
+            foot_y = ankle_y.copy()
+            foot_fallback_used = True
     else:
         foot_y = ankle_y.copy()
+        foot_fallback_used = True
 
     scale = None
     if athlete_height_m:
@@ -159,7 +176,6 @@ def analyze_jump(
         for frame in frames:
             if frame.points["head"].visibility >= 0.4:
                 head_y[frame.frame] = frame.points["head"].y_px
-        head_y = clean_trajectory(head_y, max_gap=max_pose_gap)
         apparent_height = ankle_y[:standing] - head_y[:standing]
         scale = scale_from_height(athlete_height_m, apparent_height)
     else:
@@ -226,7 +242,9 @@ def analyze_jump(
         flags.append("low_landmark_visibility")
     if longest_pose_gap > int(0.2 * fps):
         flags.append("interpolated_pose_gap")
-    if pose_backend.lower() == "rtmpose":
+    if com_fallback_used:
+        flags.append("partial_com_fallback")
+    if foot_fallback_used:
         flags.append("ankle_based_ground_contact")
     flight_trunk = trunk_length[phases.takeoff : phases.landing + 1]
     if np.percentile(flight_trunk, 10) < 0.55 * np.median(flight_trunk):
@@ -267,6 +285,7 @@ def analyze_jump(
         "low_fps",
         "low_landmark_visibility",
         "interpolated_pose_gap",
+        "partial_com_fallback",
         "unstable_trunk_orientation",
         "implausible_rotation_speed",
         "inconsistent_height_estimates",

@@ -67,6 +67,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             "low_fps": "низкая частота кадров",
             "low_landmark_visibility": "часть тела распознана неуверенно",
             "interpolated_pose_gap": "краткое перекрытие спортсмена восстановлено по траектории",
+            "partial_com_fallback": "центр масс частично восстановлен по центру бёдер",
             "ankle_based_ground_contact": "контакт с полом оценён по лодыжкам",
             "unstable_trunk_orientation": "вращение нельзя определить надёжно",
             "implausible_rotation_speed": "скачок позы исказил скорость вращения",
@@ -146,6 +147,11 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                     ),
                     "Take-off was not detected": (
                         "Начните ролик за 1 секунду до отрыва и не обрезайте коньки."
+                    ),
+                    "Trajectory contains a gap that is too long": (
+                        "Одна из ключевых точек тела долго не была видна. "
+                        "Нужно, чтобы бёдра, плечи и "
+                        "хотя бы одна стопа не исчезали из кадра надолго."
                     ),
                 }.get(str(exc), str(exc))
                 await _notify_user(

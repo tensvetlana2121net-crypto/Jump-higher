@@ -7,8 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
-COPY src ./src
-RUN pip install --no-cache-dir ".[cv]"
+# Install dependencies in a layer that does not change with application code.
+# Hatchling needs a package directory to build the dependency-only placeholder.
+RUN mkdir -p src/jumpbot && touch src/jumpbot/__init__.py && \
+    pip install --no-cache-dir ".[cv]" && rm -rf src
 RUN mkdir -p "$TORCH_HOME"
 
 # MediaPipe ships the lite/full pose models, but downloads the heavy model lazily.
@@ -17,6 +19,9 @@ RUN python -c "import mediapipe as mp; mp.solutions.pose.Pose(model_complexity=2
 
 # Cache RTMPose weights in the image; production inference needs no internet.
 RUN python -c "from rtmlib import BodyWithFeet; BodyWithFeet(mode='balanced', backend='onnxruntime', device='cpu')"
+
+COPY src ./src
+RUN pip install --no-cache-dir --no-deps .
 
 COPY alembic.ini ./
 COPY migrations ./migrations
