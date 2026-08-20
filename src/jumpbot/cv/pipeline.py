@@ -127,6 +127,8 @@ def analyze_jump(
     athlete_height_m: float | None = None,
     pose_backend: str = "rtmpose",
 ) -> AnalysisResult:
+    if not athlete_height_m:
+        raise ValueError("Athlete height is required")
     frames, fps, frame_count = extract_pose(video_path, pose_backend)
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
@@ -234,6 +236,8 @@ def analyze_jump(
         body_height_px=body_height_px,
     )
     flight_time = (phases.landing - phases.takeoff) / fps
+    if flight_time > 0.9:
+        raise ValueError("Implausibly long flight interval")
 
     velocity = vertical_velocity(com_y_up, fps)
     trunk_angle = body_orientation(hip_x, hip_y_px, shoulder_x, shoulder_y)
@@ -256,6 +260,7 @@ def analyze_jump(
                 )
             )
         )
+        takeoff_foot_angle = (takeoff_foot_angle + 90.0) % 180.0 - 90.0
         landing_foot_angle = float(
             np.rad2deg(
                 np.arctan2(
@@ -264,6 +269,7 @@ def analyze_jump(
                 )
             )
         )
+        landing_foot_angle = (landing_foot_angle + 90.0) % 180.0 - 90.0
         if foot_rotation[0] is not None:
             rotation_degrees, rotation_turns, rotation_direction, rotation_speed = foot_rotation
     shoulder_scale = max(float(np.percentile(np.abs(shoulder_width), 90)), 1.0)
@@ -347,9 +353,7 @@ def analyze_jump(
     if len(height_candidates) > 1 and np.ptp(height_candidates) > 0.25 * jump_height:
         flags.append("inconsistent_height_estimates")
         jump_height = trajectory_height or fitted_height or flight_height_m
-    if not scale:
-        flags.append("height_requires_athlete_height")
-    else:
+    if scale:
         # The frame derivative is strongly attenuated by pose smoothing at
         # 30 FPS. Use the energy-equivalent vertical take-off speed so the
         # reported speed remains physically consistent with the measured rise.

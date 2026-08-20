@@ -35,6 +35,6 @@ def test_analysis_message_contains_extended_metrics() -> None:
     assert "21 об/мин" in message
     assert "360.0°" in message
     assert "1.00 оборота" in message
-    assert "Угол стоп при отрыве: +18.0°" in message
-    assert "Угол стоп при приземлении: -6.0°" in message
+    assert "Ориентация конька при отрыве относительно горизонта кадра: +18.0°" in message
+    assert "Ориентация конька при приземлении относительно горизонта кадра: -6.0°" in message
     assert "91%" in message

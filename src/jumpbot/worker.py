@@ -55,9 +55,15 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             f"Частота вращения: {result.max_angular_velocity_dps / 6.0:.0f} об/мин"
         )
     if result.takeoff_foot_angle_deg is not None:
-        lines.append(f"Угол стоп при отрыве: {result.takeoff_foot_angle_deg:+.1f}°")
+        lines.append(
+            "Ориентация конька при отрыве относительно горизонта кадра: "
+            f"{result.takeoff_foot_angle_deg:+.1f}°"
+        )
     if result.landing_foot_angle_deg is not None:
-        lines.append(f"Угол стоп при приземлении: {result.landing_foot_angle_deg:+.1f}°")
+        lines.append(
+            "Ориентация конька при приземлении относительно горизонта кадра: "
+            f"{result.landing_foot_angle_deg:+.1f}°"
+        )
     if result.rotation_degrees is not None and result.rotation_turns is not None:
         direction = {
             "clockwise": "по часовой стрелке",
@@ -80,9 +86,6 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             "unstable_trunk_orientation": "вращение нельзя определить надёжно",
             "implausible_rotation_speed": "скачок позы исказил скорость вращения",
             "inconsistent_height_estimates": "способы расчёта высоты расходятся",
-            "height_requires_athlete_height": (
-                "для высоты по голове, плечам и бёдрам укажите рост командой /height"
-            ),
         }
         labels = [flag_labels.get(flag, flag) for flag in result.quality_flags]
         lines.append("Предупреждения качества: " + "; ".join(labels))
@@ -158,6 +161,14 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                     ),
                     "Take-off was not detected": (
                         "Начните ролик за 1 секунду до отрыва и не обрезайте коньки."
+                    ),
+                    "Athlete height is required": (
+                        "Сначала укажите рост спортсмена командой /height 170, "
+                        "затем отправьте видео повторно."
+                    ),
+                    "Implausibly long flight interval": (
+                        "Не удалось надёжно отделить полёт от скольжения или других движений. "
+                        "Оставьте один прыжок и снимайте неподвижной камерой."
                     ),
                     "Trajectory contains a gap that is too long": (
                         "Одна из ключевых точек тела долго не была видна. "

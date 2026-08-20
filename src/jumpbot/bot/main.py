@@ -99,6 +99,12 @@ async def history(message: Message) -> None:
 @router.message(F.video | F.document)
 async def receive_video(message: Message, bot: Bot) -> None:
     user = await ensure_user(message)
+    if user.height_cm is None:
+        await message.answer(
+            "Сначала укажите рост спортсмена командой <code>/height 170</code>. "
+            "Без роста высоту по голове, плечам и бёдрам нельзя перевести в сантиметры."
+        )
+        return
     video = message.video or message.document
     if video is None:
         return
@@ -151,7 +157,7 @@ async def receive_video(message: Message, bot: Bot) -> None:
             source_file_key=str(path),
             source_file_sha256=sha256_file(path),
             duration_ms=round(metadata.duration_s * 1000),
-            calibration_method="athlete_height" if user.height_cm else "flight_time",
+            calibration_method="athlete_height",
         )
         session.add(jump)
         await session.commit()
