@@ -55,6 +55,13 @@ HALPE26_INDEXES = {
 }
 
 
+def inference_stride(fps: float, target_fps: float = 30.0) -> int:
+    """Sample expensive pose inference near target FPS while preserving timing."""
+    if fps <= 0 or target_fps <= 0:
+        raise ValueError("FPS must be positive")
+    return max(1, int(round(fps / target_fps)))
+
+
 def _open_video(video_path: Path):
     try:
         import cv2
@@ -184,11 +191,16 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
     tracker = _PersonTracker()
     frames: list[FramePose] = []
     frame_index = 0
+    sampled_index = 0
+    stride = inference_stride(fps)
     try:
         while True:
             ok, image = capture.read()
             if not ok:
                 break
+            if frame_index % stride:
+                frame_index += 1
+                continue
             selected = tracker.select(*estimator(image))
             if selected is not None:
                 keypoints, scores = selected
@@ -200,11 +212,16 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
                     )
                     for name, index in HALPE26_INDEXES.items()
                 }
-                frames.append(FramePose(frame_index, frame_index / fps, points))
+                frames.append(FramePose(sampled_index, frame_index / fps, points))
+            sampled_index += 1
             frame_index += 1
     finally:
         capture.release()
-    return frames, fps, declared_frames or frame_index
+    effective_fps = fps / stride
+    sampled_frame_count = (
+        (declared_frames + stride - 1) // stride if declared_frames else sampled_index
+    )
+    return frames, effective_fps, sampled_frame_count
 
 
 def extract_pose_mediapipe(video_path: Path) -> tuple[list[FramePose], float, int]:
