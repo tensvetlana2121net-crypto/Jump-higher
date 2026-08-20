@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.signal import savgol_filter
+from scipy.signal import find_peaks, savgol_filter
 
 GRAVITY_MPS2 = 9.80665
 
@@ -92,6 +92,38 @@ def rotation_metrics(
     direction = "clockwise" if clockwise >= counterclockwise else "counterclockwise"
     speed = float(np.percentile(np.abs(angular_velocity_dps[start : end + 1]), 95))
     return rotation, rotation / 360.0, direction, speed
+
+
+def axial_rotation_metrics(
+    projected_width: np.ndarray, fps: float, start: int, end: int
+) -> tuple[float | None, float | None, float | None]:
+    """Estimate monotonic axial rotation from front/back width oscillations.
+
+    Anatomical left/right shoulder ordering changes every half turn. The
+    arccosine of normalized signed width forms a triangle wave whose travelled
+    distance corresponds to rotation, including turns that finish in the same
+    pose in which they started.
+    """
+    values = np.asarray(projected_width[start : end + 1], dtype=float)
+    if fps <= 0 or values.size < 7 or not np.isfinite(values).all():
+        return None, None, None
+    scale = float(np.percentile(np.abs(values), 90))
+    if scale <= 1e-6:
+        return None, None, None
+    normalized = np.clip(values / scale, -1.0, 1.0)
+    window = min(values.size if values.size % 2 else values.size - 1, 7)
+    smoothed = savgol_filter(normalized, window, min(2, window - 1), mode="interp")
+    principal = np.rad2deg(np.arccos(np.clip(smoothed, -1.0, 1.0)))
+    distance = max(2, int(0.08 * fps))
+    peaks, _ = find_peaks(principal, prominence=25, distance=distance)
+    troughs, _ = find_peaks(-principal, prominence=25, distance=distance)
+    turning_points = np.unique(np.r_[0, peaks, troughs, len(principal) - 1])
+    rotation = float(np.sum(np.abs(np.diff(principal[turning_points]))))
+    if rotation < 45:
+        return None, None, None
+    cumulative = np.r_[0.0, np.cumsum(np.abs(np.diff(principal)))]
+    speed = float(np.percentile(np.gradient(cumulative, 1.0 / fps), 95))
+    return rotation, rotation / 360.0, speed
 
 
 def scale_from_height(height_m: float, standing_height_px: np.ndarray) -> float:

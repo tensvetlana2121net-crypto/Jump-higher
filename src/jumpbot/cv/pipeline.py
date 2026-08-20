@@ -4,6 +4,7 @@ import numpy as np
 
 from jumpbot.cv.filtering import clean_trajectory
 from jumpbot.cv.metrics import (
+    axial_rotation_metrics,
     ballistic_height,
     body_orientation,
     flight_height,
@@ -41,6 +42,18 @@ def _lowest_visible(
         ]
         if values:
             result[frame.frame] = max(values)
+    return result
+
+
+def _signed_width(
+    frames: list[FramePose], left: str, right: str, frame_count: int
+) -> np.ndarray:
+    result = np.full(frame_count, np.nan)
+    for frame in frames:
+        left_point = frame.points[left]
+        right_point = frame.points[right]
+        if min(left_point.visibility, right_point.visibility) >= 0.4:
+            result[frame.frame] = right_point.x_px - left_point.x_px
     return result
 
 
@@ -146,6 +159,16 @@ def analyze_jump(
         _midpoint(frames, "left_shoulder", "right_shoulder", "y_px", trajectory_frame_count),
         max_gap=max_pose_gap,
     )
+    shoulder_width = clean_trajectory(
+        _signed_width(
+            frames, "left_shoulder", "right_shoulder", trajectory_frame_count
+        ),
+        max_gap=max_pose_gap,
+    )
+    hip_width = clean_trajectory(
+        _signed_width(frames, "left_hip", "right_hip", trajectory_frame_count),
+        max_gap=max_pose_gap,
+    )
     ankle_y = clean_trajectory(
         _lowest_visible(
             frames,
@@ -241,6 +264,18 @@ def analyze_jump(
         )
         if foot_rotation[0] is not None:
             rotation_degrees, rotation_turns, rotation_direction, rotation_speed = foot_rotation
+    shoulder_scale = max(float(np.percentile(np.abs(shoulder_width), 90)), 1.0)
+    hip_scale = max(float(np.percentile(np.abs(hip_width), 90)), 1.0)
+    axial_width = 0.65 * shoulder_width / shoulder_scale + 0.35 * hip_width / hip_scale
+    axial_degrees, axial_turns, axial_speed = axial_rotation_metrics(
+        axial_width, fps, phases.takeoff, phases.landing
+    )
+    if axial_degrees is not None and (
+        rotation_degrees is None or axial_degrees > rotation_degrees
+    ):
+        rotation_degrees = axial_degrees
+        rotation_turns = axial_turns
+        rotation_speed = axial_speed
     trunk_length = np.hypot(shoulder_x - hip_x, shoulder_y - hip_y_px)
     inclination = np.rad2deg(np.arctan2(np.sin(trunk_angle), np.cos(trunk_angle)))
     takeoff_inclination = float(inclination[phases.takeoff])

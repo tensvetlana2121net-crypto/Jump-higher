@@ -56,7 +56,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             "counterclockwise": "против часовой стрелки",
         }.get(result.rotation_direction, "направление не определено")
         lines.append(
-            f"Вращение по ориентации стоп: {result.rotation_degrees:.1f}° "
+            f"Осевое вращение корпуса: {result.rotation_degrees:.1f}° "
             f"({result.rotation_turns:.2f} оборота), {direction}"
         )
     else:

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from jumpbot.cv.metrics import (
+    axial_rotation_metrics,
     ballistic_height,
     flight_height,
     rotation_metrics,
@@ -87,3 +88,14 @@ def test_rotation_metrics_tolerates_short_direction_reversal() -> None:
     assert degrees == pytest.approx(380, rel=0.02)
     assert turns == pytest.approx(380 / 360, rel=0.02)
     assert direction == "clockwise"
+
+
+def test_axial_rotation_counts_two_turns_from_projected_width() -> None:
+    fps = 60.0
+    width = np.cos(np.linspace(0, 4 * np.pi, 61))
+
+    degrees, turns, speed = axial_rotation_metrics(width, fps, 0, 60)
+
+    assert degrees == pytest.approx(720, rel=0.08)
+    assert turns == pytest.approx(2, rel=0.08)
+    assert speed is not None
