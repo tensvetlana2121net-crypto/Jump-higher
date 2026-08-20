@@ -111,18 +111,28 @@ def axial_rotation_metrics(
     if scale <= 1e-6:
         return None, None, None
     normalized = np.clip(values / scale, -1.0, 1.0)
-    window = min(values.size if values.size % 2 else values.size - 1, 7)
+    window = min(values.size if values.size % 2 else values.size - 1, 3)
     smoothed = savgol_filter(normalized, window, min(2, window - 1), mode="interp")
-    principal = np.rad2deg(np.arccos(np.clip(smoothed, -1.0, 1.0)))
+    absolute_width = np.abs(smoothed)
+    principal = np.rad2deg(np.arccos(np.clip(absolute_width, 0.0, 1.0)))
     distance = max(2, int(0.08 * fps))
-    peaks, _ = find_peaks(principal, prominence=25, distance=distance)
-    troughs, _ = find_peaks(-principal, prominence=25, distance=distance)
-    turning_points = np.unique(np.r_[0, peaks, troughs, len(principal) - 1])
-    rotation = float(np.sum(np.abs(np.diff(principal[turning_points]))))
+    peaks, _ = find_peaks(absolute_width, prominence=0.3, distance=distance)
+    troughs, _ = find_peaks(-absolute_width, prominence=0.15, distance=distance)
+    if absolute_width[0] >= 0.75:
+        peaks = np.r_[0, peaks]
+    if absolute_width[-1] >= 0.75:
+        peaks = np.r_[peaks, len(absolute_width) - 1]
+    peaks = np.unique(peaks)
+    if peaks.size < 2:
+        return None, None, None
+
+    first_peak, last_peak = int(peaks[0]), int(peaks[-1])
+    before = 180.0 - principal[0] if np.any(troughs < first_peak) else principal[0]
+    after = 180.0 - principal[-1] if np.any(troughs > last_peak) else principal[-1]
+    rotation = float(before + 180.0 * (peaks.size - 1) + after)
     if rotation < 45:
         return None, None, None
-    cumulative = np.r_[0.0, np.cumsum(np.abs(np.diff(principal)))]
-    speed = float(np.percentile(np.gradient(cumulative, 1.0 / fps), 95))
+    speed = rotation / ((values.size - 1) / fps)
     return rotation, rotation / 360.0, speed
 
 

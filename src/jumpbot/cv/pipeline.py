@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from jumpbot.cv.filtering import clean_trajectory
+from jumpbot.cv.filtering import clean_trajectory, interpolate_short_gaps
 from jumpbot.cv.metrics import (
     axial_rotation_metrics,
     ballistic_height,
@@ -159,13 +159,13 @@ def analyze_jump(
         _midpoint(frames, "left_shoulder", "right_shoulder", "y_px", trajectory_frame_count),
         max_gap=max_pose_gap,
     )
-    shoulder_width = clean_trajectory(
+    shoulder_width = interpolate_short_gaps(
         _signed_width(
             frames, "left_shoulder", "right_shoulder", trajectory_frame_count
         ),
         max_gap=max_pose_gap,
     )
-    hip_width = clean_trajectory(
+    hip_width = interpolate_short_gaps(
         _signed_width(frames, "left_hip", "right_hip", trajectory_frame_count),
         max_gap=max_pose_gap,
     )
