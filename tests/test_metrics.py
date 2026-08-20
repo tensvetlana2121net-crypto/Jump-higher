@@ -55,3 +55,35 @@ def test_rotation_metrics_ignores_small_postural_change() -> None:
     velocity = unwrap_angular_velocity(orientation, fps=60)
 
     assert rotation_metrics(orientation, velocity, 0, 19) == (None, None, None, None)
+
+
+def test_rotation_metrics_detects_rotation_when_landing_angle_matches_takeoff() -> None:
+    fps = 60.0
+    orientation = np.deg2rad(
+        np.concatenate((np.linspace(0, 180, 31), np.linspace(180, 0, 31)[1:]))
+    )
+    velocity = unwrap_angular_velocity(orientation, fps)
+
+    degrees, turns, direction, speed = rotation_metrics(orientation, velocity, 0, 60)
+
+    assert degrees == pytest.approx(180)
+    assert turns == pytest.approx(0.5)
+    assert direction in {"clockwise", "counterclockwise"}
+    assert speed is not None
+
+
+def test_rotation_metrics_tolerates_short_direction_reversal() -> None:
+    fps = 60.0
+    degrees_signal = np.concatenate(
+        (np.linspace(0, 190, 30), np.linspace(190, 170, 5)[1:], np.linspace(170, 360, 30)[1:])
+    )
+    orientation = np.deg2rad(degrees_signal)
+    velocity = unwrap_angular_velocity(orientation, fps)
+
+    degrees, turns, direction, _ = rotation_metrics(
+        orientation, velocity, 0, len(orientation) - 1
+    )
+
+    assert degrees == pytest.approx(380, rel=0.02)
+    assert turns == pytest.approx(380 / 360, rel=0.02)
+    assert direction == "clockwise"

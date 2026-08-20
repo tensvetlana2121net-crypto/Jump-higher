@@ -158,16 +158,9 @@ def analyze_jump(
     flight_trunk = trunk_length[phases.takeoff : phases.landing + 1]
     if np.percentile(flight_trunk, 10) < 0.55 * np.median(flight_trunk):
         flags.append("unstable_trunk_orientation")
-        rotation_degrees = None
-        rotation_turns = None
-        rotation_direction = None
-        rotation_speed = None
     if rotation_speed is not None and rotation_speed > 3000:
         flags.append("implausible_rotation_speed")
-        rotation_degrees = None
-        rotation_turns = None
-        rotation_direction = None
-        rotation_speed = None
+        rotation_speed = 3000.0
 
     displacement = None
     trajectory_height = None

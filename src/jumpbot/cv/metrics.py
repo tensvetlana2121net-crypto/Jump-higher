@@ -70,11 +70,26 @@ def rotation_metrics(
     if end <= start:
         return None, None, None, None
     unwrapped_deg = np.rad2deg(np.unwrap(np.asarray(orientation_rad, dtype=float)))
-    signed_rotation = float(unwrapped_deg[end] - unwrapped_deg[start])
-    rotation = abs(signed_rotation)
-    if rotation < 45:
+    flight_angle = unwrapped_deg[start : end + 1]
+    if flight_angle.size < 3 or not np.isfinite(flight_angle).all():
         return None, None, None, None
-    direction = "clockwise" if signed_rotation > 0 else "counterclockwise"
+
+    # A jumper can land with nearly the same trunk angle as at take-off after
+    # completing a rotation.  The old end-minus-start calculation therefore
+    # reported zero.  Sum meaningful frame-to-frame movement in the dominant
+    # direction instead.  A small dead band rejects pose jitter while retaining
+    # genuine reversals and incomplete rotations.
+    increments = np.diff(flight_angle)
+    noise_floor = 0.75
+    meaningful = increments[np.abs(increments) >= noise_floor]
+    if meaningful.size == 0:
+        return None, None, None, None
+    clockwise = float(np.sum(meaningful[meaningful > 0]))
+    counterclockwise = float(-np.sum(meaningful[meaningful < 0]))
+    rotation = max(clockwise, counterclockwise)
+    if rotation < 30:
+        return None, None, None, None
+    direction = "clockwise" if clockwise >= counterclockwise else "counterclockwise"
     speed = float(np.percentile(np.abs(angular_velocity_dps[start : end + 1]), 95))
     return rotation, rotation / 360.0, direction, speed
 
