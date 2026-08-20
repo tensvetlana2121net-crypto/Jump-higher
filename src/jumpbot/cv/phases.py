@@ -3,11 +3,19 @@ import numpy as np
 from jumpbot.cv.types import PhaseFrames
 
 
+def _sustained_starts(mask: np.ndarray, frames: int = 3) -> np.ndarray:
+    if len(mask) < frames:
+        return np.array([], dtype=int)
+    windows = np.convolve(mask.astype(int), np.ones(frames, dtype=int), mode="valid")
+    return np.flatnonzero(windows == frames)
+
+
 def detect_phases(
     hip_y_m: np.ndarray,
     foot_y_px: np.ndarray,
     fps: float,
     floor_y_px: float | None = None,
+    body_height_px: float | None = None,
 ) -> PhaseFrames:
     """Detect a single countermovement jump using kinematics and floor distance.
 
@@ -29,20 +37,21 @@ def detect_phases(
 
     if floor_y_px is None:
         floor_y_px = float(np.nanpercentile(foot_y_px[:baseline_count], 90))
-    airborne = foot_y_px < floor_y_px - 4.0
+    clearance_px = max(4.0, 0.008 * body_height_px) if body_height_px else 4.0
+    airborne = foot_y_px < floor_y_px - clearance_px
 
     # Require three consecutive airborne/contact frames to avoid single-frame noise.
-    run = np.convolve(airborne.astype(int), np.ones(3, dtype=int), mode="same") >= 3
-    takeoff_candidates = np.flatnonzero(run & (np.arange(len(run)) > bottom))
+    takeoff_candidates = _sustained_starts(airborne)
+    takeoff_candidates = takeoff_candidates[takeoff_candidates > bottom]
     if not takeoff_candidates.size:
         raise ValueError("Take-off was not detected")
     takeoff = int(takeoff_candidates[0])
 
     contact = ~airborne
-    contact_run = np.convolve(contact.astype(int), np.ones(3, dtype=int), mode="same") >= 3
-    landing_candidates = np.flatnonzero(
-        contact_run & (np.arange(len(contact_run)) > takeoff + max(2, int(0.15 * fps)))
-    )
+    landing_candidates = _sustained_starts(contact)
+    landing_candidates = landing_candidates[
+        landing_candidates > takeoff + max(2, int(0.15 * fps))
+    ]
     if not landing_candidates.size:
         raise ValueError("Landing was not detected")
     landing = int(landing_candidates[0])

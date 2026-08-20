@@ -23,9 +23,18 @@ logger = logging.getLogger(__name__)
 def _format_analysis_message(result: AnalysisResult) -> str:
     lines = [
         "✅ Анализ прыжка завершён",
-        f"Высота по времени полёта: {result.height_flight_m * 100:.1f} см",
+        f"Максимальная высота прыжка: {result.jump_height_m * 100:.1f} см",
         f"Время полёта: {result.flight_time_s:.3f} с",
+        f"Наклон корпуса при отрыве: {result.takeoff_inclination_deg:+.1f}°",
+        f"Максимальный наклон до отрыва: {result.max_inclination_deg:.1f}°",
     ]
+    lines.append(f"Высота по времени полёта: {result.height_flight_m * 100:.1f} см")
+    if result.height_trajectory_m is not None:
+        lines.append(
+            f"Высота по траектории центра масс: {result.height_trajectory_m * 100:.1f} см"
+        )
+    if result.height_ballistic_m is not None:
+        lines.append(f"Высота по параболе полёта: {result.height_ballistic_m * 100:.1f} см")
     if result.height_displacement_m is not None:
         lines.append(f"Подъём центра масс: {result.height_displacement_m * 100:.1f} см")
     if result.takeoff_velocity_mps is not None:
@@ -36,12 +45,31 @@ def _format_analysis_message(result: AnalysisResult) -> str:
             f"{result.max_propulsion_velocity_mps:.2f} м/с"
         )
     if result.max_angular_velocity_dps is not None:
+        lines.append(f"Максимальная скорость вращения: {result.max_angular_velocity_dps:.1f} °/с")
+    if result.rotation_degrees is not None and result.rotation_turns is not None:
+        direction = {
+            "clockwise": "по часовой стрелке",
+            "counterclockwise": "против часовой стрелки",
+        }.get(result.rotation_direction, "направление не определено")
         lines.append(
-            f"Максимальная угловая скорость корпуса: {result.max_angular_velocity_dps:.1f} °/с"
+            f"Вращение: {result.rotation_degrees:.1f}° "
+            f"({result.rotation_turns:.2f} оборота), {direction}"
         )
+    else:
+        lines.append("Выраженное вращение: не обнаружено")
     lines.append(f"Достоверность: {result.confidence_score:.0%}")
     if result.quality_flags:
-        lines.append("Предупреждения качества: " + ", ".join(result.quality_flags))
+        flag_labels = {
+            "low_fps": "низкая частота кадров",
+            "low_landmark_visibility": "часть тела распознана неуверенно",
+            "ankle_based_ground_contact": "контакт с полом оценён по лодыжкам",
+            "unstable_trunk_orientation": "вращение нельзя определить надёжно",
+            "implausible_rotation_speed": "скачок позы исказил скорость вращения",
+            "inconsistent_height_estimates": "способы расчёта высоты расходятся",
+        }
+        labels = [flag_labels.get(flag, flag) for flag in result.quality_flags]
+        lines.append("Предупреждения качества: " + "; ".join(labels))
+    lines.append("Оценка выполнена по 2D-видео и не является медицинским 3D-измерением.")
     return "\n".join(lines)
 
 
@@ -74,7 +102,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             jump.apex_frame = result.phases.apex
             jump.landing_frame = result.phases.landing
             jump.flight_time_ms = round(result.flight_time_s * 1000)
-            jump.height_flight_cm = Decimal(str(round(result.height_flight_m * 100, 2)))
+            jump.height_flight_cm = Decimal(str(round(result.jump_height_m * 100, 2)))
             if result.height_displacement_m is not None:
                 jump.height_displacement_cm = Decimal(
                     str(round(result.height_displacement_m * 100, 2))

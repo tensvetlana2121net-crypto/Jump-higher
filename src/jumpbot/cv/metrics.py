@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import savgol_filter
 
 GRAVITY_MPS2 = 9.80665
 
@@ -18,7 +19,64 @@ def vertical_velocity(position_m: np.ndarray, fps: float) -> np.ndarray:
 
 
 def unwrap_angular_velocity(angle_rad: np.ndarray, fps: float) -> np.ndarray:
-    return np.rad2deg(np.gradient(np.unwrap(angle_rad), 1.0 / fps))
+    if fps <= 0:
+        raise ValueError("FPS must be positive")
+    unwrapped = np.unwrap(np.asarray(angle_rad, dtype=float))
+    if unwrapped.size < 5:
+        return np.rad2deg(np.gradient(unwrapped, 1.0 / fps))
+    window = min(unwrapped.size if unwrapped.size % 2 else unwrapped.size - 1, 11)
+    window = max(window, 5)
+    polyorder = min(3, window - 2)
+    return np.rad2deg(
+        savgol_filter(
+            unwrapped,
+            window_length=window,
+            polyorder=polyorder,
+            deriv=1,
+            delta=1.0 / fps,
+            mode="interp",
+        )
+    )
+
+
+def ballistic_height(position_m: np.ndarray, fps: float) -> float | None:
+    """Estimate rise after take-off from a robust quadratic flight trajectory."""
+    values = np.asarray(position_m, dtype=float)
+    if fps <= 0 or values.size < 5 or not np.isfinite(values).all():
+        return None
+    time = np.arange(values.size, dtype=float) / fps
+    coefficient, linear, intercept = np.polyfit(time, values, 2)
+    if coefficient >= 0:
+        return None
+    apex_time = float(np.clip(-linear / (2 * coefficient), time[0], time[-1]))
+    apex = coefficient * apex_time**2 + linear * apex_time + intercept
+    height = float(apex - intercept)
+    return height if height > 0 else None
+
+
+def body_orientation(
+    hip_x: np.ndarray,
+    hip_y_px: np.ndarray,
+    shoulder_x: np.ndarray,
+    shoulder_y_px: np.ndarray,
+) -> np.ndarray:
+    """Directed trunk orientation, in radians, with zero representing upright."""
+    return np.arctan2(shoulder_x - hip_x, hip_y_px - shoulder_y_px)
+
+
+def rotation_metrics(
+    orientation_rad: np.ndarray, angular_velocity_dps: np.ndarray, start: int, end: int
+) -> tuple[float | None, float | None, str | None, float | None]:
+    if end <= start:
+        return None, None, None, None
+    unwrapped_deg = np.rad2deg(np.unwrap(np.asarray(orientation_rad, dtype=float)))
+    signed_rotation = float(unwrapped_deg[end] - unwrapped_deg[start])
+    rotation = abs(signed_rotation)
+    if rotation < 45:
+        return None, None, None, None
+    direction = "clockwise" if signed_rotation > 0 else "counterclockwise"
+    speed = float(np.percentile(np.abs(angular_velocity_dps[start : end + 1]), 95))
+    return rotation, rotation / 360.0, direction, speed
 
 
 def scale_from_height(height_m: float, standing_height_px: np.ndarray) -> float:

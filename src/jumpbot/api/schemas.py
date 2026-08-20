@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,9 +27,12 @@ class JumpRead(BaseModel):
     status: AnalysisStatus
     height_flight_cm: Decimal | None
     height_displacement_cm: Decimal | None
+    flight_time_ms: int | None
     takeoff_velocity_mps: Decimal | None
+    max_angular_velocity_dps: Decimal | None
     confidence_score: Decimal | None
     quality_flags: list[str]
+    metric_data: dict[str, Any] | None
     created_at: datetime
 
 

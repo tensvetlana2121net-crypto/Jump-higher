@@ -40,11 +40,19 @@ class AnalysisResult:
     frame_count: int
     phases: PhaseFrames
     flight_time_s: float
+    jump_height_m: float
     height_flight_m: float
+    height_trajectory_m: float | None
+    height_ballistic_m: float | None
     height_displacement_m: float | None
     takeoff_velocity_mps: float | None
     max_propulsion_velocity_mps: float | None
     max_angular_velocity_dps: float | None
+    rotation_degrees: float | None
+    rotation_turns: float | None
+    rotation_direction: str | None
+    takeoff_inclination_deg: float
+    max_inclination_deg: float
     confidence_score: float
     quality_flags: list[str] = field(default_factory=list)
 
@@ -60,14 +68,26 @@ class AnalysisResult:
                 "landing": self.phases.landing,
             },
             "flight_time_s": self.flight_time_s,
+            "jump_height_cm": self.jump_height_m * 100,
             "height_flight_cm": self.height_flight_m * 100,
+            "height_trajectory_cm": (
+                self.height_trajectory_m * 100 if self.height_trajectory_m is not None else None
+            ),
+            "height_ballistic_cm": (
+                self.height_ballistic_m * 100 if self.height_ballistic_m is not None else None
+            ),
             "height_displacement_cm": (
                 self.height_displacement_m * 100 if self.height_displacement_m is not None else None
             ),
             "takeoff_velocity_mps": self.takeoff_velocity_mps,
             "max_propulsion_velocity_mps": self.max_propulsion_velocity_mps,
             "max_angular_velocity_dps": self.max_angular_velocity_dps,
+            "rotation_degrees": self.rotation_degrees,
+            "rotation_turns": self.rotation_turns,
+            "rotation_direction": self.rotation_direction,
+            "takeoff_inclination_deg": self.takeoff_inclination_deg,
+            "max_inclination_deg": self.max_inclination_deg,
             "confidence_score": self.confidence_score,
             "quality_flags": self.quality_flags,
-            "algorithm_version": "0.2.0",
+            "algorithm_version": "0.3.0",
         }
