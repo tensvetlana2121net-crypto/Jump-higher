@@ -14,6 +14,9 @@ def week_start(now: datetime | None = None) -> datetime:
 
 
 async def consume_analysis(session: AsyncSession, user_id: int) -> bool:
+    if not get_settings().free_quota_enabled:
+        return True
+
     pro = await session.scalar(
         select(Subscription.id).where(
             Subscription.user_id == user_id,

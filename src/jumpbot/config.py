@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("storage")
     max_video_mb: int = Field(default=20, ge=1, le=20)
     max_video_seconds: int = Field(default=15, ge=1)
+    free_quota_enabled: bool = False
     free_analyses_per_week: int = Field(default=3, ge=0)
     keep_source_video_days: int = Field(default=0, ge=0)
     log_level: str = "INFO"
