@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f6f2">
+  <title>Jump Higher — анализ прыжка</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="classification.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div><span class="eyebrow">JUMP HIGHER</span><h1>Выше — через точные попытки</h1></div>
+      <div class="avatar" id="avatar">JH</div>
+    </header>
+
+    <section class="hero panel">
+      <div>
+        <p class="kicker">НОВЫЙ АНАЛИЗ</p>
+        <h2>Загрузите один прыжок</h2>
+        <p class="muted">Камера неподвижна, спортсмен целиком в кадре, до 15 секунд.</p>
+      </div>
+      <form id="upload-form">
+        <label class="drop" for="video">
+          <input id="video" name="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska" required>
+          <span class="drop-icon">↑</span><strong id="file-label">Выбрать видео</strong><small>MP4, MOV, AVI, MKV или WebM · до 20 МБ</small>
+        </label>
+        <label class="field">Прыжок<select name="jump_name" required><option value="axel">Аксель</option><option value="loop">Риттбергер</option><option value="salchow">Сальхов</option><option value="flip">Флип</option><option value="lutz">Лутц</option><option value="toe_loop">Тулуп</option></select></label>
+        <label class="field">Обороты<select name="rotation_count" required><option value="1">Одинарный</option><option value="2">Двойной</option><option value="3">Тройной</option><option value="4">Четверной</option></select></label>
+        <label class="field height">Рост спортсмена, см<input name="athlete_height_cm" type="number" min="100" max="250" step="0.1" inputmode="decimal" placeholder="170" required></label>
+        <button type="submit">Начать анализ</button>
+      </form>
+      <div id="progress" class="progress hidden" aria-live="polite">
+        <div class="progress-head"><strong id="progress-title">Загружаем видео</strong><span id="progress-value">0%</span></div>
+        <div class="track"><i id="progress-bar"></i></div><p id="progress-note">Не закрывайте приложение</p>
+      </div>
+      <p id="error" class="error hidden" role="alert"></p>
+    </section>
+
+    <section class="section-head"><div><p class="kicker">ДИНАМИКА</p><h2>Попытки по элементам</h2></div><button class="ghost" id="refresh" type="button">Обновить</button></section>
+    <label class="filter">Показать<select id="jump-filter"><option value="all">Все прыжки</option></select></label>
+    <div id="trend" class="panel trend hidden" aria-label="График высоты последних попыток"></div>
+    <div id="history" class="history"><div class="empty">История загрузится после входа через Telegram.</div></div>
+
+    <section id="comparison" class="panel comparison hidden">
+      <div class="section-head"><div><p class="kicker">СРАВНЕНИЕ</p><h2>Две попытки</h2></div></div>
+      <div id="compare-body"></div>
+    </section>
+
+    <footer>Результаты — тренировочная оценка по 2D-видео, а не медицинское или лабораторное 3D-измерение.</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

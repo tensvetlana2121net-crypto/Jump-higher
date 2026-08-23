@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from time import perf_counter
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError
@@ -242,7 +243,21 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                 if requested_height_cm is not None
                 else None
             )
-            result = analyze_jump(source_path, height_m, settings.pose_backend)
+            analysis_started = perf_counter()
+            result = analyze_jump(
+                source_path,
+                height_m,
+                settings.pose_backend,
+                settings.pose_tracking_roi_enabled,
+                settings.pose_camera_stabilization_enabled,
+            )
+            logger.info(
+                "Jump analysis computation finished",
+                extra={
+                    "jump_id": str(jump_id),
+                    "analysis_seconds": round(perf_counter() - analysis_started, 3),
+                },
+            )
             payload = result.as_dict()
             jump.status = AnalysisStatus.COMPLETED
             jump.source_fps = Decimal(str(round(result.fps, 3)))
@@ -290,6 +305,10 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                     ),
                     "Take-off was not detected": (
                         "Начните ролик за 1 секунду до отрыва и не обрезайте коньки."
+                    ),
+                    "Take-off occurs too close to video start": (
+                        "Начало полёта оказалось у самой границы видео. Оставьте не менее "
+                        "1 секунды перед первым прыжком; для каскада выберите режим каскада."
                     ),
                     "Athlete height is required": (
                         "Сначала укажите рост спортсмена командой /height 170, "

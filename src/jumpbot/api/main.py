@@ -2,10 +2,12 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jumpbot import __version__
+from jumpbot.api.miniapp import router as miniapp_router
 from jumpbot.api.schemas import HealthRead, JumpRead, UserCreate, UserRead
 from jumpbot.api.security import require_api_key
 from jumpbot.config import get_settings
@@ -29,6 +31,12 @@ app = FastAPI(
     version=__version__,
     description="Training-oriented vertical jump video analysis",
     lifespan=lifespan,
+)
+app.include_router(miniapp_router)
+app.mount(
+    "/miniapp",
+    StaticFiles(directory=get_settings().miniapp_static_dir, html=True),
+    name="miniapp",
 )
 
 

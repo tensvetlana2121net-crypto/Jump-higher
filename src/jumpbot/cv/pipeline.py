@@ -126,10 +126,17 @@ def analyze_jump(
     video_path: Path,
     athlete_height_m: float | None = None,
     pose_backend: str = "rtmpose",
+    tracking_roi_enabled: bool = True,
+    camera_stabilization_enabled: bool = True,
 ) -> AnalysisResult:
     if not athlete_height_m:
         raise ValueError("Athlete height is required")
-    frames, fps, frame_count = extract_pose(video_path, pose_backend)
+    frames, fps, frame_count = extract_pose(
+        video_path,
+        pose_backend,
+        tracking_roi_enabled,
+        camera_stabilization_enabled,
+    )
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
     pose_gaps = [
@@ -235,6 +242,9 @@ def analyze_jump(
         fps,
         body_height_px=body_height_px,
     )
+    minimum_lead_frames = max(3, int(round(0.15 * fps)))
+    if phases.takeoff < minimum_lead_frames:
+        raise ValueError("Take-off occurs too close to video start")
     flight_time = (phases.landing - phases.takeoff) / fps
     if flight_time > 0.9:
         raise ValueError("Implausibly long flight interval")

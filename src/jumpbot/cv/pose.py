@@ -1,10 +1,16 @@
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 
 from jumpbot.cv.types import FramePose, Landmark
+
+logger = logging.getLogger(__name__)
+TRACKING_REACQUIRE_FRAMES = 30
 
 MEDIAPIPE_INDEXES = {
     "head": 0,
@@ -60,6 +66,127 @@ def inference_stride(fps: float, target_fps: float = 30.0) -> int:
     if fps <= 0 or target_fps <= 0:
         raise ValueError("FPS must be positive")
     return max(1, int(round(fps / target_fps)))
+
+
+def _tracking_roi(
+    image_shape: tuple[int, ...],
+    points: np.ndarray,
+    scores: np.ndarray,
+    padding: float = 0.55,
+) -> tuple[int, int, int, int] | None:
+    """Build a padded virtual-camera crop around the tracked athlete."""
+    height, width = image_shape[:2]
+    visible = (np.asarray(scores) >= 0.35) & np.isfinite(points).all(axis=1)
+    if np.count_nonzero(visible) < 6:
+        return None
+    athlete = np.asarray(points)[visible]
+    left, top = np.min(athlete, axis=0)
+    right, bottom = np.max(athlete, axis=0)
+    body_width = max(float(right - left), width * 0.08)
+    body_height = max(float(bottom - top), height * 0.15)
+    margin_x = max(body_width * padding, width * 0.04)
+    margin_y = max(body_height * padding, height * 0.06)
+    x1 = max(0, int(left - margin_x))
+    y1 = max(0, int(top - margin_y))
+    x2 = min(width, int(right + margin_x) + 1)
+    y2 = min(height, int(bottom + margin_y) + 1)
+    if x2 - x1 < 64 or y2 - y1 < 96:
+        return None
+    return x1, y1, x2, y2
+
+
+def _transform_points(points: np.ndarray, transform: np.ndarray) -> np.ndarray:
+    values = np.asarray(points, dtype=float)
+    homogeneous = np.concatenate(
+        (values, np.ones((*values.shape[:-1], 1), dtype=float)), axis=-1
+    )
+    return homogeneous @ np.asarray(transform, dtype=float).T
+
+
+def _infer_tracked_pose(
+    estimator: object,
+    image: np.ndarray,
+    crop_box: tuple[int, int, int, int] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    if crop_box is None:
+        return estimator(image)  # type: ignore[operator]
+    x1, y1, x2, y2 = crop_box
+    crop = image[y1:y2, x1:x2]
+    pose_model = estimator.pose_model  # type: ignore[attr-defined]
+    keypoints, scores = pose_model(crop)
+    if np.asarray(keypoints).size:
+        keypoints = np.asarray(keypoints).copy()
+        keypoints[..., 0] += x1
+        keypoints[..., 1] += y1
+    return keypoints, scores
+
+
+@dataclass
+class _CameraStabilizer:
+    """Estimate camera pan/zoom from background features outside the athlete ROI."""
+
+    previous_gray: np.ndarray | None = None
+    cumulative: np.ndarray | None = None
+
+    def update(
+        self, image: np.ndarray, excluded_roi: tuple[int, int, int, int] | None
+    ) -> np.ndarray:
+        import cv2
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        identity = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        if self.previous_gray is None:
+            self.previous_gray = gray
+            self.cumulative = np.eye(3)
+            return identity
+
+        mask = np.full(self.previous_gray.shape, 255, dtype=np.uint8)
+        if excluded_roi is not None:
+            x1, y1, x2, y2 = excluded_roi
+            mask[y1:y2, x1:x2] = 0
+        previous_points = cv2.goodFeaturesToTrack(
+            self.previous_gray,
+            maxCorners=250,
+            qualityLevel=0.01,
+            minDistance=12,
+            mask=mask,
+        )
+        delta = identity
+        if previous_points is not None and len(previous_points) >= 12:
+            current_points, status, _ = cv2.calcOpticalFlowPyrLK(
+                self.previous_gray, gray, previous_points, None
+            )
+            if current_points is not None and status is not None:
+                valid = status.ravel().astype(bool)
+                if np.count_nonzero(valid) >= 10:
+                    estimated, inliers = cv2.estimateAffinePartial2D(
+                        current_points[valid],
+                        previous_points[valid],
+                        method=cv2.RANSAC,
+                        ransacReprojThreshold=2.5,
+                    )
+                    if estimated is not None and inliers is not None:
+                        inlier_ratio = float(np.mean(inliers))
+                        scale = float(np.hypot(estimated[0, 0], estimated[0, 1]))
+                        if inlier_ratio >= 0.45 and 0.85 <= scale <= 1.18:
+                            delta = estimated
+
+        delta_3x3 = np.vstack((delta, (0.0, 0.0, 1.0)))
+        self.cumulative = self.cumulative @ delta_3x3
+        self.previous_gray = gray
+        return self.cumulative[:2]
+
+
+@lru_cache(maxsize=1)
+def _rtmpose_estimator():
+    """Load RTMPose once per Celery worker process."""
+    try:
+        from rtmlib import BodyWithFeet
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "RTMPose is not installed; install JumpBot with the 'cv' extra"
+        ) from exc
+    return BodyWithFeet(mode="balanced", backend="onnxruntime", device="cpu")
 
 
 def _open_video(video_path: Path):
@@ -180,19 +307,22 @@ class _PersonTracker:
         return selected_points, selected_scores
 
 
-def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]:
-    try:
-        from rtmlib import BodyWithFeet
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("RTMPose is not installed; install JumpBot with the 'cv' extra") from exc
-
+def extract_pose_rtmpose(
+    video_path: Path,
+    tracking_roi_enabled: bool = True,
+    camera_stabilization_enabled: bool = True,
+) -> tuple[list[FramePose], float, int]:
     capture, fps, declared_frames = _open_video(video_path)
-    estimator = BodyWithFeet(mode="balanced", backend="onnxruntime", device="cpu")
+    estimator = _rtmpose_estimator()
     tracker = _PersonTracker()
+    stabilizer = _CameraStabilizer()
     frames: list[FramePose] = []
     frame_index = 0
     sampled_index = 0
     stride = inference_stride(fps)
+    last_selected: tuple[np.ndarray, np.ndarray] | None = None
+    inference_seconds = 0.0
+    started_at = perf_counter()
     try:
         while True:
             ok, image = capture.read()
@@ -201,22 +331,49 @@ def extract_pose_rtmpose(video_path: Path) -> tuple[list[FramePose], float, int]
             if frame_index % stride:
                 frame_index += 1
                 continue
-            selected = tracker.select(*estimator(image))
+            crop_box = None
+            if (
+                tracking_roi_enabled
+                and last_selected is not None
+                and sampled_index % TRACKING_REACQUIRE_FRAMES
+            ):
+                crop_box = _tracking_roi(image.shape, *last_selected)
+            camera_transform = (
+                stabilizer.update(image, crop_box)
+                if camera_stabilization_enabled
+                else np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+            )
+            inference_started = perf_counter()
+            keypoints, scores = _infer_tracked_pose(estimator, image, crop_box)
+            inference_seconds += perf_counter() - inference_started
+            selected = tracker.select(keypoints, scores)
             if selected is not None:
                 keypoints, scores = selected
+                last_selected = (keypoints.copy(), scores.copy())
+                stabilized_keypoints = _transform_points(keypoints, camera_transform)
                 points = {
                     name: Landmark(
-                        x_px=float(keypoints[index, 0]),
-                        y_px=float(keypoints[index, 1]),
+                        x_px=float(stabilized_keypoints[index, 0]),
+                        y_px=float(stabilized_keypoints[index, 1]),
                         visibility=float(scores[index]),
                     )
                     for name, index in HALPE26_INDEXES.items()
                 }
                 frames.append(FramePose(sampled_index, frame_index / fps, points))
+            else:
+                last_selected = None
             sampled_index += 1
             frame_index += 1
     finally:
         capture.release()
+        logger.info(
+            "Pose extraction finished video=%s sampled_frames=%d inference_seconds=%.3f "
+            "total_seconds=%.3f",
+            video_path.name,
+            sampled_index,
+            inference_seconds,
+            perf_counter() - started_at,
+        )
     effective_fps = fps / stride
     sampled_frame_count = (
         (declared_frames + stride - 1) // stride if declared_frames else sampled_index
@@ -272,7 +429,16 @@ POSE_BACKENDS: dict[str, Callable[[Path], tuple[list[FramePose], float, int]]] =
 }
 
 
-def extract_pose(video_path: Path, backend: str = "rtmpose") -> tuple[list[FramePose], float, int]:
+def extract_pose(
+    video_path: Path,
+    backend: str = "rtmpose",
+    tracking_roi_enabled: bool = True,
+    camera_stabilization_enabled: bool = True,
+) -> tuple[list[FramePose], float, int]:
+    if backend.lower() == "rtmpose":
+        return extract_pose_rtmpose(
+            video_path, tracking_roi_enabled, camera_stabilization_enabled
+        )
     try:
         extractor = POSE_BACKENDS[backend.lower()]
     except KeyError as exc:

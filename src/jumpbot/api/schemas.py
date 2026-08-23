@@ -25,14 +25,19 @@ class JumpRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     status: AnalysisStatus
+    jump_type: str
     height_flight_cm: Decimal | None
     height_displacement_cm: Decimal | None
     flight_time_ms: int | None
     takeoff_velocity_mps: Decimal | None
     max_angular_velocity_dps: Decimal | None
+    max_propulsion_mps: Decimal | None
     confidence_score: Decimal | None
     quality_flags: list[str]
     metric_data: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    completed_at: datetime | None
     created_at: datetime
 
 

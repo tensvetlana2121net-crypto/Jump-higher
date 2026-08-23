@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./jumpbot.db"
     redis_url: str = "redis://localhost:6379/0"
     telegram_bot_token: str = ""
+    telegram_init_data_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
+    miniapp_static_dir: Path = Path(__file__).parent / "miniapp_static"
     storage_dir: Path = Path("storage")
     max_video_mb: int = Field(default=20, ge=1, le=20)
     max_video_seconds: int = Field(default=15, ge=1)
@@ -22,6 +24,8 @@ class Settings(BaseSettings):
     keep_source_video_days: int = Field(default=0, ge=0)
     log_level: str = "INFO"
     pose_backend: str = "rtmpose"
+    pose_tracking_roi_enabled: bool = True
+    pose_camera_stabilization_enabled: bool = True
 
     @model_validator(mode="after")
     def validate_pose_backend(self) -> "Settings":

@@ -1,0 +1,8 @@
+select{font:inherit}
+.field{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}
+.field input,.field select,.filter select{height:48px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:#fbfcfa}
+.height{grid-column:1/-1}
+.filter{display:flex;align-items:center;gap:12px;margin:-6px 0 16px;font-size:13px;font-weight:700}
+.filter select{min-width:220px}
+.jump-name{display:inline-block;margin-top:10px;padding:6px 9px;border-radius:9px;background:var(--lilac);color:#534c63;font-size:12px;font-weight:800}
+@media(max-width:520px){.field,form button{grid-column:1/-1}.filter{align-items:stretch;flex-direction:column}.filter select{width:100%}}
