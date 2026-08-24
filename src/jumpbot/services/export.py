@@ -9,6 +9,7 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
     fields = [
         "id",
         "created_at",
+        "jump_type",
         "height_flight_cm",
         "height_displacement_cm",
         "flight_time_ms",
@@ -20,6 +21,8 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
         "takeoff_foot_angle_deg",
         "landing_foot_angle_deg",
         "confidence_score",
+        "rotation_assessment",
+        "personal_signals",
     ]
     writer = csv.DictWriter(buffer, fieldnames=fields)
     writer.writeheader()
@@ -27,12 +30,15 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
         row = {
             field: getattr(jump, field)
             for field in fields
-            if field not in {
+            if field
+            not in {
                 "rotation_degrees",
                 "rotation_turns",
                 "takeoff_inclination_deg",
                 "takeoff_foot_angle_deg",
                 "landing_foot_angle_deg",
+                "rotation_assessment",
+                "personal_signals",
             }
         }
         metrics = jump.metric_data or {}
@@ -43,6 +49,10 @@ def jumps_to_csv(jumps: list[JumpHistory]) -> bytes:
                 "takeoff_inclination_deg": metrics.get("takeoff_inclination_deg"),
                 "takeoff_foot_angle_deg": metrics.get("takeoff_foot_angle_deg"),
                 "landing_foot_angle_deg": metrics.get("landing_foot_angle_deg"),
+                "rotation_assessment": (metrics.get("technique_assessment") or {}).get("status"),
+                "personal_signals": ";".join(
+                    (metrics.get("personal_comparison") or {}).get("signals", [])
+                ),
             }
         )
         writer.writerow(row)

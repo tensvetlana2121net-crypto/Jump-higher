@@ -12,8 +12,10 @@ from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import BufferedInputFile
 from celery import Celery
 from PIL import Image, ImageDraw, ImageFont
+from sqlalchemy import select
 
 from jumpbot.config import get_settings
+from jumpbot.cv.assessment import assess_declared_rotation, compare_with_personal_baseline
 from jumpbot.cv.pipeline import analyze_jump
 from jumpbot.cv.types import AnalysisResult
 from jumpbot.db.models import AnalysisStatus, JumpHistory, User
@@ -54,15 +56,9 @@ def _result_card_png(result: AnalysisResult) -> bytes:
         turns_value = f"≈{rotation_degrees / 360.0:.2f}"
     else:
         rotation_value = (
-            f"{result.rotation_degrees:.1f}°"
-            if result.rotation_degrees is not None
-            else "—"
+            f"{result.rotation_degrees:.1f}°" if result.rotation_degrees is not None else "—"
         )
-        turns_value = (
-            f"{result.rotation_turns:.2f}"
-            if result.rotation_turns is not None
-            else "—"
-        )
+        turns_value = f"{result.rotation_turns:.2f}" if result.rotation_turns is not None else "—"
 
     height = result.height_ballistic_m or result.jump_height_m
     metrics = (
@@ -127,9 +123,7 @@ def _result_card_png(result: AnalysisResult) -> bytes:
     footer = "Отличный результат! Попробуй ещё раз!"
     footer_box = draw.textbbox((0, 0), footer, font=footer_font)
     footer_width = footer_box[2] - footer_box[0]
-    draw.text(
-        ((1080 - footer_width) / 2, 1313), footer, fill="#35443F", font=footer_font
-    )
+    draw.text(((1080 - footer_width) / 2, 1313), footer, fill="#35443F", font=footer_font)
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
@@ -145,17 +139,14 @@ def _format_analysis_message(result: AnalysisResult) -> str:
     ]
     lines.append(f"Высота по времени полёта: {result.height_flight_m * 100:.1f} см")
     if result.height_trajectory_m is not None:
-        lines.append(
-            f"Высота по траектории центра масс: {result.height_trajectory_m * 100:.1f} см"
-        )
+        lines.append(f"Высота по траектории центра масс: {result.height_trajectory_m * 100:.1f} см")
     if result.height_ballistic_m is not None:
         lines.append(f"Высота по параболе полёта: {result.height_ballistic_m * 100:.1f} см")
     if result.height_displacement_m is not None:
         lines.append(f"Подъём центра масс: {result.height_displacement_m * 100:.1f} см")
     if result.takeoff_velocity_mps is not None:
         lines.append(
-            "Расчётная вертикальная скорость взлёта: "
-            f"{result.takeoff_velocity_mps:.2f} м/с"
+            f"Расчётная вертикальная скорость взлёта: {result.takeoff_velocity_mps:.2f} м/с"
         )
     if result.max_propulsion_velocity_mps is not None:
         lines.append(
@@ -166,9 +157,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
         lines.append(
             f"Средняя угловая скорость вращения: {result.max_angular_velocity_dps:.1f} °/с"
         )
-        lines.append(
-            f"Частота вращения: {result.max_angular_velocity_dps / 6.0:.0f} об/мин"
-        )
+        lines.append(f"Частота вращения: {result.max_angular_velocity_dps / 6.0:.0f} об/мин")
     if result.takeoff_foot_angle_deg is not None:
         lines.append(
             "Ориентация конька при отрыве относительно горизонта кадра: "
@@ -182,9 +171,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
     if result.rotation_degrees is not None and result.rotation_turns is not None:
         if result.fps < 50:
             displayed_degrees = round(result.rotation_degrees / 10.0) * 10.0
-            uncertainty = (
-                round((result.max_angular_velocity_dps or 0.0) / result.fps / 5.0) * 5.0
-            )
+            uncertainty = round((result.max_angular_velocity_dps or 0.0) / result.fps / 5.0) * 5.0
             lines.append(
                 f"Осевое вращение корпуса: ≈{displayed_degrees:.0f}° "
                 f"({displayed_degrees / 360.0:.2f} оборота), "
@@ -195,9 +182,7 @@ def _format_analysis_message(result: AnalysisResult) -> str:
                 f"Осевое вращение корпуса: {result.rotation_degrees:.1f}° "
                 f"({result.rotation_turns:.2f} оборота)"
             )
-        lines.append(
-            "Направление вращения по одному 2D-видео надёжно не определяется."
-        )
+        lines.append("Направление вращения по одному 2D-видео надёжно не определяется.")
     else:
         lines.append("Выраженное вращение: не обнаружено")
     lines.append(f"Достоверность: {result.confidence_score:.0%}")
@@ -238,11 +223,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         delete_source = settings.keep_source_video_days == 0
         try:
             requested_height_cm = (jump.metric_data or {}).get("athlete_height_cm")
-            height_m = (
-                float(requested_height_cm) / 100
-                if requested_height_cm is not None
-                else None
-            )
+            height_m = float(requested_height_cm) / 100 if requested_height_cm is not None else None
             analysis_started = perf_counter()
             result = analyze_jump(
                 source_path,
@@ -259,6 +240,24 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                 },
             )
             payload = result.as_dict()
+            payload["technique_assessment"] = assess_declared_rotation(payload, jump.jump_type)
+            previous_metrics = await session.scalars(
+                select(JumpHistory.metric_data)
+                .where(
+                    JumpHistory.user_id == jump.user_id,
+                    JumpHistory.jump_type == jump.jump_type,
+                    JumpHistory.status == AnalysisStatus.COMPLETED,
+                    JumpHistory.id != jump.id,
+                )
+                .order_by(JumpHistory.created_at.desc())
+                .limit(5)
+            )
+            personal_comparison = compare_with_personal_baseline(
+                payload,
+                [metrics for metrics in previous_metrics if metrics],
+            )
+            if personal_comparison is not None:
+                payload["personal_comparison"] = personal_comparison
             jump.status = AnalysisStatus.COMPLETED
             jump.source_fps = Decimal(str(round(result.fps, 3)))
             jump.frame_count = result.frame_count
