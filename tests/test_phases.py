@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from jumpbot.cv.phases import detect_phases
 
@@ -64,9 +65,7 @@ def test_uses_blade_deceleration_before_deep_crouch() -> None:
     hip[20:64] = 1.0 + 2.0 * time - 0.5 * 3.0 * time**2
     hip[64:] = np.linspace(0.95, 0.70, 36)
     feet = np.full(100, 550.0)
-    feet[20:52] = np.concatenate(
-        (np.linspace(540, 515, 12), np.linspace(515, 552, 20))
-    )
+    feet[20:52] = np.concatenate((np.linspace(540, 515, 12), np.linspace(515, 552, 20)))
     feet[52:55] = [552.0, 552.5, 553.0]
     feet[55:] = np.linspace(554, 580, 45)
 
@@ -89,3 +88,37 @@ def test_refines_implausibly_early_takeoff_from_flight_symmetry() -> None:
     assert phases.apex == 48
     assert phases.landing == 57
     assert phases.takeoff == 39
+
+
+def test_ignores_airborne_artifact_before_minimum_takeoff_frame() -> None:
+    fps = 30.0
+    hip = np.ones(100)
+    hip[1:8] = np.linspace(1.0, 1.25, 7)
+    hip[8:15] = np.linspace(1.25, 1.0, 7)
+    hip[45:55] = np.linspace(1.0, 1.3, 10)
+    hip[55:65] = np.linspace(1.3, 1.0, 10)
+    feet = np.full(100, 500.0)
+    feet[1:15] = 470.0
+    feet[45:65] = 470.0
+
+    phases = detect_phases(
+        hip,
+        feet,
+        fps,
+        body_height_px=500,
+        minimum_takeoff_frame=10,
+    )
+
+    assert phases.takeoff >= 45
+    assert phases.landing == 65
+
+
+def test_rejects_flight_whose_apex_is_the_landing_frame() -> None:
+    fps = 30.0
+    hip = np.ones(60)
+    hip[20:32] = np.linspace(1.0, 1.3, 12)
+    feet = np.full(60, 500.0)
+    feet[20:31] = 470.0
+
+    with pytest.raises(ValueError, match="Landing was not detected"):
+        detect_phases(hip, feet, fps, body_height_px=500)

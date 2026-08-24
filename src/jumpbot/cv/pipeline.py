@@ -45,9 +45,7 @@ def _lowest_visible(
     return result
 
 
-def _signed_width(
-    frames: list[FramePose], left: str, right: str, frame_count: int
-) -> np.ndarray:
+def _signed_width(frames: list[FramePose], left: str, right: str, frame_count: int) -> np.ndarray:
     result = np.full(frame_count, np.nan)
     for frame in frames:
         left_point = frame.points[left]
@@ -111,9 +109,7 @@ def _foot_orientation(frames: list[FramePose], frame_count: int) -> np.ndarray |
             if np.hypot(dx, dy_up) >= 4:
                 angles.append(float(np.arctan2(dy_up, dx)))
         if angles:
-            raw[frame.frame] = np.arctan2(
-                np.mean(np.sin(angles)), np.mean(np.cos(angles))
-            )
+            raw[frame.frame] = np.arctan2(np.mean(np.sin(angles)), np.mean(np.cos(angles)))
     valid = np.flatnonzero(np.isfinite(raw))
     if valid.size < 5:
         return None
@@ -139,15 +135,10 @@ def analyze_jump(
     )
     if len(frames) < max(12, int(fps)):
         raise ValueError("Insufficient visible pose frames")
-    pose_gaps = [
-        b.frame - a.frame - 1 for a, b in zip(frames, frames[1:], strict=False)
-    ]
+    pose_gaps = [b.frame - a.frame - 1 for a, b in zip(frames, frames[1:], strict=False)]
     longest_pose_gap = max(pose_gaps, default=0)
     max_pose_gap = max(5, int(0.75 * fps))
-    if any(
-        b.frame - a.frame > max_pose_gap + 1
-        for a, b in zip(frames, frames[1:], strict=False)
-    ):
+    if any(b.frame - a.frame > max_pose_gap + 1 for a, b in zip(frames, frames[1:], strict=False)):
         raise ValueError("Pose tracking contains a long gap")
 
     declared_frame_count = frame_count
@@ -169,9 +160,7 @@ def analyze_jump(
         max_gap=max_pose_gap,
     )
     shoulder_width = interpolate_short_gaps(
-        _signed_width(
-            frames, "left_shoulder", "right_shoulder", trajectory_frame_count
-        ),
+        _signed_width(frames, "left_shoulder", "right_shoulder", trajectory_frame_count),
         max_gap=max_pose_gap,
     )
     hip_width = interpolate_short_gaps(
@@ -229,22 +218,22 @@ def analyze_jump(
         apparent_height = ankle_y[:standing] - head_y[:standing]
         scale = scale_from_height(athlete_height_m, apparent_height)
     else:
-        apparent_height = ankle_y[: min(len(frames), max(5, int(0.75 * fps)))] - hip_y_px[
-            : min(len(frames), max(5, int(0.75 * fps)))
-        ]
+        apparent_height = (
+            ankle_y[: min(len(frames), max(5, int(0.75 * fps)))]
+            - hip_y_px[: min(len(frames), max(5, int(0.75 * fps)))]
+        )
 
     # Phase detection needs only a consistently scaled upward trajectory.
     com_y_up = -com_y_px * (scale or 0.001)
     body_height_px = float(np.nanmedian(apparent_height))
+    minimum_lead_frames = max(3, int(round(0.15 * fps)))
     phases = detect_phases(
         com_y_up,
         foot_y,
         fps,
         body_height_px=body_height_px,
+        minimum_takeoff_frame=minimum_lead_frames,
     )
-    minimum_lead_frames = max(3, int(round(0.15 * fps)))
-    if phases.takeoff < minimum_lead_frames:
-        raise ValueError("Take-off occurs too close to video start")
     flight_time = (phases.landing - phases.takeoff) / fps
     if flight_time > 0.9:
         raise ValueError("Implausibly long flight interval")
@@ -262,9 +251,7 @@ def analyze_jump(
     landing_foot_angle = None
     if foot_angle is not None:
         foot_velocity = unwrap_angular_velocity(foot_angle, fps)
-        foot_rotation = rotation_metrics(
-            foot_angle, foot_velocity, rotation_start, rotation_end
-        )
+        foot_rotation = rotation_metrics(foot_angle, foot_velocity, rotation_start, rotation_end)
         takeoff_foot_angle = float(
             np.rad2deg(
                 np.arctan2(
@@ -291,18 +278,14 @@ def analyze_jump(
     axial_degrees, axial_turns, axial_speed = axial_rotation_metrics(
         axial_width, fps, rotation_start, rotation_end
     )
-    if axial_degrees is not None and (
-        rotation_degrees is None or axial_degrees > rotation_degrees
-    ):
+    if axial_degrees is not None and (rotation_degrees is None or axial_degrees > rotation_degrees):
         rotation_degrees = axial_degrees
         rotation_turns = axial_turns
         rotation_speed = axial_speed
     trunk_length = np.hypot(shoulder_x - hip_x, shoulder_y - hip_y_px)
     inclination = np.rad2deg(np.arctan2(np.sin(trunk_angle), np.cos(trunk_angle)))
     takeoff_inclination = float(inclination[phases.takeoff])
-    max_inclination = float(
-        np.max(np.abs(inclination[phases.start : phases.takeoff + 1]))
-    )
+    max_inclination = float(np.max(np.abs(inclination[phases.start : phases.takeoff + 1])))
 
     visibility = np.mean(
         [min(point.visibility for point in frame.points.values()) for frame in frames]
@@ -337,35 +320,34 @@ def analyze_jump(
         body_rises = []
         for y_px in (head_y, shoulder_y, hip_y_px):
             y_up = -y_px * scale
-            rise = float(
-                np.max(y_up[phases.takeoff : phases.landing + 1])
-                - y_up[phases.takeoff]
-            )
+            rise = float(np.max(y_up[phases.takeoff : phases.landing + 1]) - y_up[phases.takeoff])
             if 0.02 <= rise <= 1.0:
                 body_rises.append(rise)
         if len(body_rises) >= 2:
             trajectory_height = float(np.median(body_rises))
         else:
-            trajectory_height = float(
-                com_y_up[phases.apex] - com_y_up[phases.takeoff]
-            )
-        fitted_height = ballistic_height(
-            com_y_up[phases.takeoff : phases.landing + 1], fps
-        )
+            trajectory_height = float(com_y_up[phases.apex] - com_y_up[phases.takeoff])
+        fitted_height = ballistic_height(com_y_up[phases.takeoff : phases.landing + 1], fps)
         takeoff_velocity = float(velocity[phases.takeoff])
         max_velocity = float(np.max(velocity[phases.countermovement_bottom : phases.takeoff + 1]))
 
     flight_height_m = flight_height(flight_time)
+    valid_trajectory_height = (
+        trajectory_height
+        if trajectory_height is not None and 0.02 <= trajectory_height <= 2.0
+        else None
+    )
+    valid_fitted_height = (
+        fitted_height if fitted_height is not None and 0.02 <= fitted_height <= 2.0 else None
+    )
     height_candidates = [flight_height_m]
     height_candidates.extend(
-        value
-        for value in (trajectory_height, fitted_height)
-        if value is not None and 0.02 <= value <= 2.0
+        value for value in (valid_trajectory_height, valid_fitted_height) if value is not None
     )
-    jump_height = float(fitted_height or np.median(height_candidates))
+    jump_height = float(valid_fitted_height or np.median(height_candidates))
     if len(height_candidates) > 1 and np.ptp(height_candidates) > 0.25 * jump_height:
         flags.append("inconsistent_height_estimates")
-        jump_height = fitted_height or trajectory_height or flight_height_m
+        jump_height = valid_fitted_height or valid_trajectory_height or flight_height_m
     if scale:
         # The frame derivative is strongly attenuated by pose smoothing at
         # 30 FPS. Use the energy-equivalent vertical take-off speed so the
@@ -382,9 +364,9 @@ def analyze_jump(
         "inconsistent_height_estimates",
     }
     penalty = 0.08 * len(penalty_flags.intersection(flags))
-    confidence = float(
-        np.clip(0.55 * visibility + 0.25 * min(fps / 60, 1) + 0.2 - penalty, 0, 1)
-    )
+    confidence = float(np.clip(0.55 * visibility + 0.25 * min(fps / 60, 1) + 0.2 - penalty, 0, 1))
+    if confidence < 0.45:
+        raise ValueError("Analysis confidence is too low")
 
     return AnalysisResult(
         fps=fps,

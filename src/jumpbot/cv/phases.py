@@ -7,7 +7,10 @@ def _sustained_starts(mask: np.ndarray, frames: int = 3) -> np.ndarray:
     if len(mask) < frames:
         return np.array([], dtype=int)
     windows = np.convolve(mask.astype(int), np.ones(frames, dtype=int), mode="valid")
-    return np.flatnonzero(windows == frames)
+    sustained = np.flatnonzero(windows == frames)
+    if sustained.size < 2:
+        return sustained
+    return sustained[np.r_[True, np.diff(sustained) > 1]]
 
 
 def detect_phases(
@@ -16,6 +19,7 @@ def detect_phases(
     fps: float,
     floor_y_px: float | None = None,
     body_height_px: float | None = None,
+    minimum_takeoff_frame: int = 0,
 ) -> PhaseFrames:
     """Detect a single countermovement jump using kinematics and floor distance.
 
@@ -49,26 +53,25 @@ def detect_phases(
     minimum_flight = max(2, int(0.15 * fps))
     candidates: list[tuple[float, int, int]] = []
     for candidate in takeoff_candidates:
+        if candidate < minimum_takeoff_frame:
+            continue
         possible_landings = contact_starts[contact_starts > candidate + minimum_flight]
         if not possible_landings.size:
             tentative_apex = candidate + int(np.argmax(hip_y_m[candidate:]))
             post_apex = foot_y_px[tentative_apex:]
             if post_apex.size:
                 landing_floor = float(np.nanpercentile(post_apex, 90))
-                local_contact_starts = _sustained_starts(
-                    foot_y_px >= landing_floor - clearance_px
-                )
+                local_contact_starts = _sustained_starts(foot_y_px >= landing_floor - clearance_px)
                 possible_landings = local_contact_starts[
-                    local_contact_starts > max(
-                        tentative_apex, candidate + minimum_flight
-                    )
+                    local_contact_starts > max(tentative_apex, candidate + minimum_flight)
                 ]
-            if not possible_landings.size:
-                continue
+        if not possible_landings.size:
+            continue
         candidate_landing = int(possible_landings[0])
-        rise = float(
-            np.max(hip_y_m[candidate : candidate_landing + 1]) - hip_y_m[candidate]
-        )
+        candidate_apex = int(candidate + np.argmax(hip_y_m[candidate : candidate_landing + 1]))
+        if not candidate < candidate_apex < candidate_landing:
+            continue
+        rise = float(hip_y_m[candidate_apex] - hip_y_m[candidate])
         candidates.append((rise, int(candidate), candidate_landing))
     if not candidates:
         raise ValueError("Landing was not detected")
@@ -105,11 +108,12 @@ def detect_phases(
         takeoff = max(0, apex - descent_frames)
 
     bottom_search_start = max(0, min(start, takeoff), takeoff - int(fps))
-    bottom = bottom_search_start + int(
-        np.argmin(hip_y_m[bottom_search_start : takeoff + 1])
-    )
+    bottom = bottom_search_start + int(np.argmin(hip_y_m[bottom_search_start : takeoff + 1]))
 
     apex = takeoff + int(np.argmax(hip_y_m[takeoff : landing + 1]))
+
+    if not takeoff < apex < landing:
+        raise ValueError("Detected flight phases are physically inconsistent")
 
     if velocity[takeoff] < -0.2:
         raise ValueError("Detected take-off conflicts with hip trajectory")

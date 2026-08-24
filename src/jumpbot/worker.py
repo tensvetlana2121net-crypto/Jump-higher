@@ -322,6 +322,11 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                         "Нужно, чтобы бёдра, плечи и "
                         "хотя бы одна стопа не исчезали из кадра надолго."
                     ),
+                    "Analysis confidence is too low": (
+                        "Модель не смогла уверенно удержать главного спортсмена. "
+                        "Для каскада нужен отдельный режим; для одиночного прыжка "
+                        "обрежьте видео до 1–2 секунд до отрыва и после выезда."
+                    ),
                 }.get(str(exc), str(exc))
                 await _notify_user(
                     user.telegram_user_id,
