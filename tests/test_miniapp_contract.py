@@ -1,7 +1,7 @@
 import pytest
 from fastapi.routing import APIRoute
 
-from jumpbot.api.miniapp import make_jump_type, router
+from jumpbot.api.miniapp import make_analysis_type, make_jump_type, router
 from jumpbot.config import get_settings
 
 
@@ -47,3 +47,14 @@ def test_jump_classification(name: str, rotations: int, expected: str) -> None:
 def test_jump_classification_rejects_unknown_values(name: str, rotations: int) -> None:
     with pytest.raises(ValueError):
         make_jump_type(name, rotations)
+
+
+def test_single_and_cascade_modes_are_separate() -> None:
+    assert make_analysis_type("single", "axel", 2, None) == "2_axel"
+    assert make_analysis_type("cascade", "axel", 2, 3) == "cascade_3"
+
+
+@pytest.mark.parametrize(("mode", "count"), [("other", None), ("cascade", 1), ("cascade", 4)])
+def test_invalid_analysis_mode_is_rejected(mode: str, count: int | None) -> None:
+    with pytest.raises(ValueError):
+        make_analysis_type(mode, "axel", 2, count)

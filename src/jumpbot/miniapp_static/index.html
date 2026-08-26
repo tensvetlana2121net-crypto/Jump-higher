@@ -19,10 +19,16 @@
     <section class="hero panel">
       <div>
         <p class="kicker">НОВЫЙ АНАЛИЗ</p>
-        <h2>Загрузите один прыжок</h2>
-        <p class="muted">Камера неподвижна, спортсмен целиком в кадре, до 15 секунд.</p>
+        <h2>Загрузите прыжок или каскад</h2>
+        <p class="muted">Выберите тип видео. Камера неподвижна, спортсмен целиком в кадре, до 15 секунд.</p>
       </div>
       <form id="upload-form">
+        <fieldset class="mode-picker">
+          <legend>Тип видео</legend>
+          <label><input type="radio" name="analysis_mode" value="single" checked> Одиночный прыжок</label>
+          <label><input type="radio" name="analysis_mode" value="cascade"> Каскад</label>
+        </fieldset>
+        <label id="cascade-count-field" class="field" hidden>Элементов в каскаде<select name="cascade_element_count" disabled><option value="2">2 элемента</option><option value="3">3 элемента</option></select></label>
         <label class="drop" for="video">
           <input id="video" name="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska" required>
           <span class="drop-icon">↑</span><strong id="file-label">Выбрать видео</strong><small>MP4, MOV, AVI, MKV или WebM · до 20 МБ</small>

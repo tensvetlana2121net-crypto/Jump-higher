@@ -223,6 +223,24 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         delete_source = settings.keep_source_video_days == 0
         try:
             requested_height_cm = (jump.metric_data or {}).get("athlete_height_cm")
+            analysis_mode = (jump.metric_data or {}).get("analysis_mode", "single")
+            if analysis_mode == "cascade":
+                jump.status = AnalysisStatus.REJECTED
+                jump.error_code = "cascade_segmentation_pending"
+                jump.error_message = (
+                    "Каскад распознан как отдельный тип видео. Поэлементное выделение "
+                    "2–3 прыжков ещё калибруется; видео не анализировалось как один прыжок."
+                )
+                jump.completed_at = datetime.now(UTC)
+                await session.commit()
+                if user and settings.telegram_bot_token:
+                    await _notify_user(
+                        user.telegram_user_id,
+                        "Каскад принят правильно, но поэлементный анализ пока калибруется. "
+                        "Я не стал выдавать весь каскад за один прыжок. Сохраните видео — "
+                        "оно подходит для следующей версии анализатора каскадов.",
+                    )
+                return {"status": "rejected", "reason": "cascade segmentation pending"}
             height_m = float(requested_height_cm) / 100 if requested_height_cm is not None else None
             analysis_started = perf_counter()
             result = analyze_jump(

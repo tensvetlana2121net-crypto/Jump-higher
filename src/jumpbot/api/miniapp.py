@@ -28,12 +28,28 @@ ALLOWED_MIME_TYPES = {
 }
 JUMP_NAMES = {"axel", "loop", "salchow", "flip", "lutz", "toe_loop"}
 ROTATION_COUNTS = {1, 2, 3, 4}
+ANALYSIS_MODES = {"single", "cascade"}
 
 
 def make_jump_type(jump_name: str, rotation_count: int) -> str:
     if jump_name not in JUMP_NAMES or rotation_count not in ROTATION_COUNTS:
         raise ValueError("Unsupported jump classification")
     return f"{rotation_count}_{jump_name}"
+
+
+def make_analysis_type(
+    analysis_mode: str,
+    jump_name: str,
+    rotation_count: int,
+    cascade_element_count: int | None,
+) -> str:
+    if analysis_mode not in ANALYSIS_MODES:
+        raise ValueError("Unsupported analysis mode")
+    if analysis_mode == "single":
+        return make_jump_type(jump_name, rotation_count)
+    if cascade_element_count not in {2, 3}:
+        raise ValueError("Cascade must contain 2 or 3 elements")
+    return f"cascade_{cascade_element_count}"
 
 
 async def _ensure_user(session: AsyncSession, identity: TelegramIdentity) -> User:
@@ -100,12 +116,16 @@ async def create_analysis(
     athlete_height_cm: Annotated[float, Form(ge=100, le=250)],
     jump_name: Annotated[str, Form()],
     rotation_count: Annotated[int, Form()],
+    analysis_mode: Annotated[str, Form()] = "single",
+    cascade_element_count: Annotated[int | None, Form()] = None,
 ) -> JumpHistory:
     settings = get_settings()
     if video.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported video format")
     try:
-        jump_type = make_jump_type(jump_name, rotation_count)
+        jump_type = make_analysis_type(
+            analysis_mode, jump_name, rotation_count, cascade_element_count
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     user = await _ensure_user(session, identity)
@@ -144,7 +164,11 @@ async def create_analysis(
         duration_ms=round(metadata.duration_s * 1000),
         jump_type=jump_type,
         calibration_method="athlete_height",
-        metric_data={"athlete_height_cm": athlete_height_cm},
+        metric_data={
+            "athlete_height_cm": athlete_height_cm,
+            "analysis_mode": analysis_mode,
+            "cascade_element_count": cascade_element_count,
+        },
     )
     session.add(jump)
     try:

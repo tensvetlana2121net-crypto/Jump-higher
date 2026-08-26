@@ -1,5 +1,8 @@
 select{font:inherit}
 .field{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}
+.mode-picker{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;border:0;padding:0;margin:0}
+.mode-picker legend{width:100%;font-size:13px;font-weight:700;margin-bottom:2px}
+.mode-picker label{display:flex;align-items:center;gap:8px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfa;font-size:13px;font-weight:700}
 .field input,.field select,.filter select{height:48px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:#fbfcfa}
 .height{grid-column:1/-1}
 .filter{display:flex;align-items:center;gap:12px;margin:-6px 0 16px;font-size:13px;font-weight:700}

@@ -8,7 +8,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from jumpbot.config import get_settings
@@ -25,6 +25,7 @@ settings = get_settings()
 
 
 class HeightSetup(StatesGroup):
+    waiting_for_mode = State()
     waiting_for_height = State()
 
 
@@ -93,20 +94,39 @@ async def receive_video(message: Message, bot: Bot, state: FSMContext) -> None:
     video = message.video or message.document
     if video is None:
         return
-    await state.set_state(HeightSetup.waiting_for_height)
+    await state.set_state(HeightSetup.waiting_for_mode)
     await state.update_data(
         pending_file_id=video.file_id,
         pending_file_size=video.file_size or 0,
         pending_mime_type=getattr(video, "mime_type", None) or "video/mp4",
         pending_file_name=getattr(video, "file_name", None) or "jump.mp4",
     )
-    await message.answer(
-        "Введите рост спортсмена в сантиметрах одним числом, например: <b>160</b>. "
-        "После этого я автоматически начну анализ уже отправленного видео. "
-        "Рост в аккаунте не сохраняется.",
-        parse_mode=ParseMode.HTML,
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Одиночный прыжок", callback_data="mode:single")],
+            [InlineKeyboardButton(text="Каскад (2–3 элемента)", callback_data="mode:cascade")],
+        ]
     )
+    await message.answer("Что снято на видео?", reply_markup=keyboard)
     return
+
+
+@router.callback_query(HeightSetup.waiting_for_mode, F.data.startswith("mode:"))
+async def receive_analysis_mode(callback: CallbackQuery, state: FSMContext) -> None:
+    mode = (callback.data or "").partition(":")[2]
+    if mode not in {"single", "cascade"}:
+        await callback.answer("Неизвестный режим", show_alert=True)
+        return
+    await state.update_data(analysis_mode=mode)
+    await state.set_state(HeightSetup.waiting_for_height)
+    await callback.answer()
+    if callback.message is not None:
+        label = "одиночного прыжка" if mode == "single" else "каскада"
+        await callback.message.answer(
+            f"Выбран анализ {label}. Введите рост спортсмена одним числом, например: "
+            "<b>160</b>. Рост в аккаунте не сохраняется.",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 @router.message(HeightSetup.waiting_for_height, F.text)
@@ -134,6 +154,7 @@ async def receive_height_for_pending_video(
         str(data["pending_mime_type"]),
         str(data["pending_file_name"]),
         height,
+        str(data.get("analysis_mode", "single")),
     )
 
 
@@ -146,6 +167,7 @@ async def _process_video(
     mime_type: str,
     name: str,
     athlete_height_cm: Decimal,
+    analysis_mode: str,
 ) -> None:
     max_bytes = settings.max_video_mb * 1024 * 1024
     if file_size <= 0 or file_size > max_bytes:
@@ -193,13 +215,20 @@ async def _process_video(
             source_file_key=str(path),
             source_file_sha256=sha256_file(path),
             duration_ms=round(metadata.duration_s * 1000),
+            jump_type="cascade" if analysis_mode == "cascade" else "countermovement",
             calibration_method="athlete_height",
-            metric_data={"athlete_height_cm": float(athlete_height_cm)},
+            metric_data={
+                "athlete_height_cm": float(athlete_height_cm),
+                "analysis_mode": analysis_mode,
+            },
         )
         session.add(jump)
         await session.commit()
     analyze_video_task.delay(str(jump_id))
-    await message.answer("Видео принято. Анализирую!")
+    if analysis_mode == "cascade":
+        await message.answer("Каскад принят. Выделяю элементы отдельно, не как один прыжок.")
+    else:
+        await message.answer("Одиночный прыжок принят. Анализирую!")
 
 
 async def main() -> None:
