@@ -17,6 +17,32 @@ from jumpbot.cv.phases import detect_phases
 from jumpbot.cv.pose import extract_pose
 from jumpbot.cv.types import AnalysisResult, FramePose
 
+_CONFIDENCE_LANDMARKS = (
+    "head",
+    "left_shoulder",
+    "right_shoulder",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle",
+)
+
+
+def _pose_visibility(frames: list[FramePose]) -> float:
+    """Return robust whole-pose visibility without one hidden extremity dominating."""
+    frame_scores: list[float] = []
+    for frame in frames:
+        scores = [
+            frame.points[name].visibility
+            for name in _CONFIDENCE_LANDMARKS
+            if name in frame.points
+        ]
+        if scores:
+            frame_scores.append(float(np.median(scores)))
+    return float(np.median(frame_scores)) if frame_scores else 0.0
+
 
 def _midpoint(
     frames: list[FramePose], left: str, right: str, axis: str, frame_count: int
@@ -287,9 +313,7 @@ def analyze_jump(
     takeoff_inclination = float(inclination[phases.takeoff])
     max_inclination = float(np.max(np.abs(inclination[phases.start : phases.takeoff + 1])))
 
-    visibility = np.mean(
-        [min(point.visibility for point in frame.points.values()) for frame in frames]
-    )
+    visibility = _pose_visibility(frames)
     flags: list[str] = []
     if fps < 50:
         flags.append("low_fps")
