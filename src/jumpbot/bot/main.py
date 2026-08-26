@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from jumpbot.config import get_settings
 from jumpbot.db.models import AnalysisStatus, JumpHistory, User
@@ -87,6 +87,51 @@ async def history(message: Message) -> None:
         for row in rows
     ]
     await message.answer("Последние анализы:\n" + "\n".join(lines))
+
+
+@router.message(Command("myid"))
+async def my_id(message: Message) -> None:
+    if message.from_user is None:
+        return
+    await message.answer(
+        f"Ваш Telegram ID: <code>{message.from_user.id}</code>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(Command("stats"))
+async def stats(message: Message) -> None:
+    if message.from_user is None or not settings.is_admin(message.from_user.id):
+        await message.answer(
+            "Статистика доступна только владельцу. Отправьте /myid, чтобы узнать свой "
+            "Telegram ID для безопасного добавления в настройку сервера."
+        )
+        return
+    async with SessionLocal() as session:
+        total_users = int(await session.scalar(select(func.count(User.id))) or 0)
+        rows = list(await session.scalars(select(JumpHistory)))
+    completed = sum(row.status == AnalysisStatus.COMPLETED for row in rows)
+    rejected = sum(row.status == AnalysisStatus.REJECTED for row in rows)
+    failed = sum(row.status == AnalysisStatus.FAILED for row in rows)
+    floor_tours = sum(
+        row.jump_type == "floor_tour" or row.jump_type.endswith("_floor_tour") for row in rows
+    )
+    cascades = sum(
+        row.jump_type == "cascade" or row.jump_type.startswith("cascade_") for row in rows
+    )
+    ice_singles = len(rows) - floor_tours - cascades
+    await message.answer(
+        "Статистика Jump Higher\n\n"
+        f"Пользователей: {total_users}\n"
+        f"Видео всего: {len(rows)}\n"
+        f"Успешных анализов: {completed}\n"
+        f"Отклонено по качеству: {rejected}\n"
+        f"Технических ошибок: {failed}\n\n"
+        f"Одиночные на льду: {ice_singles}\n"
+        f"Каскады: {cascades}\n"
+        f"Туры в зале: {floor_tours}\n\n"
+        "Доступ остаётся бесплатным; оплаты и подписки отключены."
+    )
 
 
 @router.message(F.video | F.document)

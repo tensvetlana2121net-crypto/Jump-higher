@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./jumpbot.db"
     redis_url: str = "redis://localhost:6379/0"
     telegram_bot_token: str = ""
+    admin_telegram_ids: str = ""
     telegram_init_data_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
     miniapp_static_dir: Path = Path(__file__).parent / "miniapp_static"
     storage_dir: Path = Path("storage")
@@ -26,6 +27,14 @@ class Settings(BaseSettings):
     pose_backend: str = "rtmpose"
     pose_tracking_roi_enabled: bool = True
     pose_camera_stabilization_enabled: bool = True
+
+    def is_admin(self, telegram_user_id: int) -> bool:
+        configured = {
+            int(value.strip())
+            for value in self.admin_telegram_ids.split(",")
+            if value.strip().isdigit()
+        }
+        return telegram_user_id in configured
 
     @model_validator(mode="after")
     def validate_pose_backend(self) -> "Settings":
