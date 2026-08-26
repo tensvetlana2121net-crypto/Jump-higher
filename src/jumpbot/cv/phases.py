@@ -13,6 +13,29 @@ def _sustained_starts(mask: np.ndarray, frames: int = 3) -> np.ndarray:
     return sustained[np.r_[True, np.diff(sustained) > 1]]
 
 
+def _torso_landing(
+    trajectory: np.ndarray,
+    takeoff: int,
+    apex: int,
+    minimum_flight: int,
+) -> int | None:
+    """Find landing from COM return when rotating feet are not reliably visible."""
+    if apex <= takeoff or apex >= len(trajectory) - 3:
+        return None
+    takeoff_level = float(trajectory[takeoff])
+    # A landing crouch normally brings COM to or below the take-off level.
+    # Allow two centimetres for pose noise and perspective changes.
+    returned = trajectory <= takeoff_level + 0.02
+    search_start = max(apex + 1, takeoff + minimum_flight)
+    starts = _sustained_starts(returned[search_start:], frames=3)
+    if not starts.size:
+        return None
+    landing = search_start + int(starts[0])
+    if float(trajectory[apex] - trajectory[landing]) < 0.03:
+        return None
+    return landing
+
+
 def detect_phases(
     hip_y_m: np.ndarray,
     foot_y_px: np.ndarray,
@@ -65,6 +88,15 @@ def detect_phases(
                 possible_landings = local_contact_starts[
                     local_contact_starts > max(tentative_apex, candidate + minimum_flight)
                 ]
+            if not possible_landings.size:
+                torso_landing = _torso_landing(
+                    hip_y_m,
+                    int(candidate),
+                    int(tentative_apex),
+                    minimum_flight,
+                )
+                if torso_landing is not None:
+                    possible_landings = np.array([torso_landing], dtype=int)
         if not possible_landings.size:
             continue
         candidate_landing = int(possible_landings[0])

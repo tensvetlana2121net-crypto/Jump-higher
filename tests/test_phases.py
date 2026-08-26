@@ -39,6 +39,25 @@ def test_detects_landing_when_ice_perspective_shifts_floor_level() -> None:
     assert phases.landing == 75
 
 
+def test_detects_landing_from_torso_when_rotating_feet_remain_hidden() -> None:
+    fps = 30.0
+    hip = np.ones(90)
+    hip[20:30] = np.linspace(1.0, 0.85, 10)
+    hip[30:40] = np.linspace(0.85, 1.0, 10)
+    flight_time = np.arange(18) / fps
+    hip[40:58] = 1.0 + 2.8 * flight_time - 0.5 * 9.80665 * flight_time**2
+    hip[58:64] = np.linspace(hip[57], 0.92, 6)
+    hip[64:] = 0.92
+    feet = np.full(90, 500.0)
+    feet[40:] = 470.0  # detector never sees the rotating blades return to the ice
+
+    phases = detect_phases(hip, feet, fps, body_height_px=500)
+
+    assert phases.takeoff == 40
+    assert 56 <= phases.landing <= 64
+    assert phases.takeoff < phases.apex < phases.landing
+
+
 def test_ignores_deeper_crouch_after_landing() -> None:
     fps = 30.0
     hip = np.ones(100)
