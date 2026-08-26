@@ -105,6 +105,7 @@ async def receive_video(message: Message, bot: Bot, state: FSMContext) -> None:
         inline_keyboard=[
             [InlineKeyboardButton(text="Одиночный прыжок", callback_data="mode:single")],
             [InlineKeyboardButton(text="Каскад (2–3 элемента)", callback_data="mode:cascade")],
+            [InlineKeyboardButton(text="Туры в зале (на полу)", callback_data="mode:floor_tour")],
         ]
     )
     await message.answer("Что снято на видео?", reply_markup=keyboard)
@@ -114,14 +115,19 @@ async def receive_video(message: Message, bot: Bot, state: FSMContext) -> None:
 @router.callback_query(HeightSetup.waiting_for_mode, F.data.startswith("mode:"))
 async def receive_analysis_mode(callback: CallbackQuery, state: FSMContext) -> None:
     mode = (callback.data or "").partition(":")[2]
-    if mode not in {"single", "cascade"}:
+    if mode not in {"single", "cascade", "floor_tour"}:
         await callback.answer("Неизвестный режим", show_alert=True)
         return
     await state.update_data(analysis_mode=mode)
     await state.set_state(HeightSetup.waiting_for_height)
     await callback.answer()
     if callback.message is not None:
-        label = "одиночного прыжка" if mode == "single" else "каскада"
+        labels = {
+            "single": "одиночного прыжка на льду",
+            "cascade": "каскада на льду",
+            "floor_tour": "тура в зале на полу",
+        }
+        label = labels[mode]
         await callback.message.answer(
             f"Выбран анализ {label}. Введите рост спортсмена одним числом, например: "
             "<b>160</b>. Рост в аккаунте не сохраняется.",
@@ -215,11 +221,15 @@ async def _process_video(
             source_file_key=str(path),
             source_file_sha256=sha256_file(path),
             duration_ms=round(metadata.duration_s * 1000),
-            jump_type="cascade" if analysis_mode == "cascade" else "countermovement",
+            jump_type={
+                "cascade": "cascade",
+                "floor_tour": "floor_tour",
+            }.get(analysis_mode, "countermovement"),
             calibration_method="athlete_height",
             metric_data={
                 "athlete_height_cm": float(athlete_height_cm),
                 "analysis_mode": analysis_mode,
+                "training_surface": "floor" if analysis_mode == "floor_tour" else "ice",
             },
         )
         session.add(jump)
@@ -227,6 +237,8 @@ async def _process_video(
     analyze_video_task.delay(str(jump_id))
     if analysis_mode == "cascade":
         await message.answer("Каскад принят. Выделяю элементы отдельно, не как один прыжок.")
+    elif analysis_mode == "floor_tour":
+        await message.answer("Тур в зале принят. Анализирую прыжок на полу!")
     else:
         await message.answer("Одиночный прыжок принят. Анализирую!")
 

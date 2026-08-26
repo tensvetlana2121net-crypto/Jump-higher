@@ -52,6 +52,7 @@ def test_jump_classification_rejects_unknown_values(name: str, rotations: int) -
 def test_single_and_cascade_modes_are_separate() -> None:
     assert make_analysis_type("single", "axel", 2, None) == "2_axel"
     assert make_analysis_type("cascade", "axel", 2, 3) == "cascade_3"
+    assert make_analysis_type("floor_tour", "axel", 3, None) == "3_floor_tour"
 
 
 @pytest.mark.parametrize(("mode", "count"), [("other", None), ("cascade", 1), ("cascade", 4)])

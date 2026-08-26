@@ -28,7 +28,7 @@ ALLOWED_MIME_TYPES = {
 }
 JUMP_NAMES = {"axel", "loop", "salchow", "flip", "lutz", "toe_loop"}
 ROTATION_COUNTS = {1, 2, 3, 4}
-ANALYSIS_MODES = {"single", "cascade"}
+ANALYSIS_MODES = {"single", "cascade", "floor_tour"}
 
 
 def make_jump_type(jump_name: str, rotation_count: int) -> str:
@@ -47,6 +47,8 @@ def make_analysis_type(
         raise ValueError("Unsupported analysis mode")
     if analysis_mode == "single":
         return make_jump_type(jump_name, rotation_count)
+    if analysis_mode == "floor_tour":
+        return f"{rotation_count}_floor_tour"
     if cascade_element_count not in {2, 3}:
         raise ValueError("Cascade must contain 2 or 3 elements")
     return f"cascade_{cascade_element_count}"
@@ -168,6 +170,7 @@ async def create_analysis(
             "athlete_height_cm": athlete_height_cm,
             "analysis_mode": analysis_mode,
             "cascade_element_count": cascade_element_count,
+            "training_surface": "floor" if analysis_mode == "floor_tour" else "ice",
         },
     )
     session.add(jump)

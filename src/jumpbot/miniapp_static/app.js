@@ -3,7 +3,7 @@ const auth=tg?.initData||'';let pollTimer=null,selected=[],allRows=[];
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const api=async(path,options={})=>{const headers=new Headers(options.headers||{});headers.set('Authorization',`tma ${auth}`);const r=await fetch(`/miniapp/api${path}`,{...options,headers});if(!r.ok){let d={};try{d=await r.json()}catch{}throw new Error(d.detail||'Не удалось выполнить запрос')}return r.json()};
 const labels={queued:'В очереди',processing:'Анализ',completed:'Готово',failed:'Ошибка',rejected:'Отклонено'};
-const jumpNames={axel:'Аксель',loop:'Риттбергер',salchow:'Сальхов',flip:'Флип',lutz:'Лутц',toe_loop:'Тулуп',countermovement:'Без классификации'};
+const jumpNames={axel:'Аксель',loop:'Риттбергер',salchow:'Сальхов',flip:'Флип',lutz:'Лутц',toe_loop:'Тулуп',floor_tour:'Тур в зале',countermovement:'Без классификации'};
 const rotations={1:'Одинарный',2:'Двойной',3:'Тройной',4:'Четверной'};
 const quality={low_fps:'Низкая частота кадров',low_landmark_visibility:'Часть тела распознана неуверенно',interpolated_pose_gap:'Короткое перекрытие восстановлено',partial_com_fallback:'Центр масс оценён приближённо',ankle_based_ground_contact:'Контакт оценён по лодыжкам',unstable_trunk_orientation:'Вращение определено неуверенно',implausible_rotation_speed:'Возможен скачок распознавания',inconsistent_height_estimates:'Оценки высоты расходятся'};
 const coachingSignals={possible_lower_jump_height:'Высота ниже личной медианы',possible_shorter_flight:'Время полёта короче обычного',possible_slower_rotation:'Вращение медленнее личной медианы'};

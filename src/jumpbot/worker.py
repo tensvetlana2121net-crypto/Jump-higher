@@ -222,8 +222,9 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
         source_path = Path(jump.source_file_key or "")
         delete_source = settings.keep_source_video_days == 0
         try:
-            requested_height_cm = (jump.metric_data or {}).get("athlete_height_cm")
-            analysis_mode = (jump.metric_data or {}).get("analysis_mode", "single")
+            requested_metadata = dict(jump.metric_data or {})
+            requested_height_cm = requested_metadata.get("athlete_height_cm")
+            analysis_mode = requested_metadata.get("analysis_mode", "single")
             if analysis_mode == "cascade":
                 jump.status = AnalysisStatus.REJECTED
                 jump.error_code = "cascade_segmentation_pending"
@@ -258,6 +259,7 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
                 },
             )
             payload = result.as_dict()
+            payload.update(requested_metadata)
             payload["technique_assessment"] = assess_declared_rotation(payload, jump.jump_type)
             previous_metrics = await session.scalars(
                 select(JumpHistory.metric_data)
