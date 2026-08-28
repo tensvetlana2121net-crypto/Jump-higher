@@ -24,6 +24,7 @@ def test_analysis_message_contains_extended_metrics() -> None:
         takeoff_inclination_deg=12.0,
         max_inclination_deg=18.0,
         confidence_score=0.91,
+        jump_length_m=0.42,
     )
 
     message = _format_analysis_message(result)
@@ -39,6 +40,7 @@ def test_analysis_message_contains_extended_metrics() -> None:
     assert "Ориентация конька при отрыве относительно горизонта кадра: +18.0°" in message
     assert "Ориентация конька при приземлении относительно горизонта кадра: -6.0°" in message
     assert "91%" in message
+    assert "42.0 см" in message
 
     card = _result_card_png(result)
     assert card.startswith(b"\x89PNG\r\n\x1a\n")

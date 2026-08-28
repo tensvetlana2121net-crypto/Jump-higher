@@ -11,7 +11,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import BufferedInputFile
 from celery import Celery
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from sqlalchemy import select
 
 from jumpbot.config import get_settings
@@ -43,12 +43,16 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.I
 
 
 def _result_card_png(result: AnalysisResult) -> bytes:
-    image = Image.new("RGB", (1080, 1450), "#F5F3EF")
+    image = Image.new("RGB", (1080, 1450), "#04091A")
     draw = ImageDraw.Draw(image)
-    title_font = _font(48, bold=True)
-    label_font = _font(27)
-    value_font = _font(43, bold=True)
-    footer_font = _font(34, bold=True)
+    for y in range(image.height):
+        blend = y / image.height
+        draw.line((0, y, image.width, y), fill=(4, int(9 + 8 * blend), int(26 + 24 * blend)))
+    title_font = _font(54, bold=True)
+    label_font = _font(23)
+    value_font = _font(41, bold=True)
+    small_font = _font(20)
+    footer_font = _font(27, bold=True)
 
     if result.fps < 50 and result.rotation_degrees is not None:
         rotation_degrees = round(result.rotation_degrees / 10.0) * 10.0
@@ -61,14 +65,12 @@ def _result_card_png(result: AnalysisResult) -> bytes:
         turns_value = f"{result.rotation_turns:.2f}" if result.rotation_turns is not None else "—"
 
     height = result.height_ballistic_m or result.jump_height_m
+    jump_length = (
+        f"{result.jump_length_m * 100:.1f} см" if result.jump_length_m is not None else "—"
+    )
     metrics = (
         ("Высота по параболе полёта", f"{height * 100:.1f} см"),
-        (
-            "Подъём центра масс",
-            f"{result.height_displacement_m * 100:.1f} см"
-            if result.height_displacement_m is not None
-            else "—",
-        ),
+        ("Длина прыжка · 2D", jump_length),
         (
             "Вертикальная скорость взлёта",
             f"{result.takeoff_velocity_mps:.2f} м/с"
@@ -81,9 +83,8 @@ def _result_card_png(result: AnalysisResult) -> bytes:
             if result.max_propulsion_velocity_mps is not None
             else "—",
         ),
-        ("Наклон до отрыва", f"{result.max_inclination_deg:.1f}°"),
-        ("Осевое вращение корпуса", rotation_value),
         ("Количество оборотов", turns_value),
+        ("Осевое вращение корпуса", rotation_value),
         (
             "Скорость вращения",
             f"{result.max_angular_velocity_dps:.0f}°/с"
@@ -96,36 +97,69 @@ def _result_card_png(result: AnalysisResult) -> bytes:
             if result.max_angular_velocity_dps is not None
             else "—",
         ),
-        ("Наклон при отрыве", f"{result.takeoff_inclination_deg:+.1f}°"),
+        ("Время полёта", f"{result.flight_time_s:.3f} с"),
+        ("Наклон корпуса при отрыве", f"{result.takeoff_inclination_deg:+.1f}°"),
     )
-    colors = ("#DDEBE6", "#E8E2F0", "#E9E5D2", "#DCE7F2", "#F0E0DC")
+    glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.ellipse((760, -180, 1220, 280), fill=(0, 102, 255, 105))
+    glow_draw.ellipse((-220, 930, 260, 1430), fill=(0, 255, 236, 70))
+    glow = glow.filter(ImageFilter.GaussianBlur(95))
+    image = Image.alpha_composite(image.convert("RGBA"), glow)
+    draw = ImageDraw.Draw(image)
 
-    draw.text((60, 55), "Анализ прыжка", fill="#35443F", font=title_font)
+    draw.text((60, 48), "JUMP HIGHER", fill="#21E6FF", font=_font(23, bold=True))
+    draw.text((60, 82), "АНАЛИЗ ПРЫЖКА", fill="#F5FAFF", font=title_font)
+    draw.rounded_rectangle(
+        (818, 58, 1020, 112), radius=27, fill="#0B2447", outline="#218BFF", width=2
+    )
+    confidence = f"CONFIDENCE {result.confidence_score:.0%}"
+    draw.text((844, 75), confidence, fill="#70F7FF", font=_font(18, bold=True))
+    draw.line((60, 160, 1020, 160), fill="#1575D1", width=2)
+
     for index, (label, value) in enumerate(metrics):
         column, row = index % 2, index // 2
         left = 60 + column * 500
-        top = 155 + row * 220
+        top = 200 + row * 210
+        shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow)
+        shadow_draw.rounded_rectangle(
+            (left - 2, top - 2, left + 462, top + 172),
+            radius=25,
+            outline=(0, 193, 255, 150),
+            width=5,
+        )
+        image = Image.alpha_composite(image, shadow.filter(ImageFilter.GaussianBlur(12)))
+        draw = ImageDraw.Draw(image)
         draw.rounded_rectangle(
-            (left, top, left + 460, top + 185),
-            radius=28,
-            fill=colors[index % len(colors)],
+            (left, top, left + 460, top + 170),
+            radius=24,
+            fill="#091A35",
+            outline="#1467B5" if index % 2 == 0 else "#00AFC6",
+            width=2,
         )
         draw.multiline_text(
-            (left + 28, top + 24),
+            (left + 25, top + 22),
             label,
-            fill="#52615C",
+            fill="#9CB8D8",
             font=label_font,
-            spacing=5,
+            spacing=3,
         )
-        draw.text((left + 28, top + 112), value, fill="#263833", font=value_font)
+        draw.text((left + 25, top + 103), value, fill="#61F4FF", font=value_font)
 
-    draw.rounded_rectangle((60, 1285, 1020, 1385), radius=30, fill="#D7E7DF")
-    footer = "Отличный результат! Попробуй ещё раз!"
+    draw.rounded_rectangle(
+        (60, 1280, 1020, 1390), radius=30, fill="#07162E", outline="#19DCEB", width=2
+    )
+    footer = "ТРЕНИРУЙСЯ · СРАВНИВАЙ · СТАНОВИСЬ ВЫШЕ"
     footer_box = draw.textbbox((0, 0), footer, font=footer_font)
     footer_width = footer_box[2] - footer_box[0]
-    draw.text(((1080 - footer_width) / 2, 1313), footer, fill="#35443F", font=footer_font)
+    draw.text(((1080 - footer_width) / 2, 1300), footer, fill="#F5FAFF", font=footer_font)
+    note = "Длина — 2D-оценка в плоскости кадра; перспектива влияет на точность"
+    note_box = draw.textbbox((0, 0), note, font=small_font)
+    note_width = note_box[2] - note_box[0]
+    draw.text(((1080 - note_width) / 2, 1348), note, fill="#7592B6", font=small_font)
     output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
+    image.convert("RGB").save(output, format="PNG", optimize=True)
     return output.getvalue()
 
 
@@ -144,6 +178,8 @@ def _format_analysis_message(result: AnalysisResult) -> str:
         lines.append(f"Высота по параболе полёта: {result.height_ballistic_m * 100:.1f} см")
     if result.height_displacement_m is not None:
         lines.append(f"Подъём центра масс: {result.height_displacement_m * 100:.1f} см")
+    if result.jump_length_m is not None:
+        lines.append(f"Длина прыжка по плоскости кадра: {result.jump_length_m * 100:.1f} см")
     if result.takeoff_velocity_mps is not None:
         lines.append(
             f"Расчётная вертикальная скорость взлёта: {result.takeoff_velocity_mps:.2f} м/с"

@@ -378,6 +378,12 @@ def analyze_jump(
         # reported speed remains physically consistent with the measured rise.
         takeoff_velocity = float(np.sqrt(2.0 * 9.80665 * jump_height))
 
+    jump_length = None
+    if scale:
+        measured_length = abs(float(hip_x[phases.landing] - hip_x[phases.takeoff])) * scale
+        if 0.01 <= measured_length <= 5.0:
+            jump_length = measured_length
+
     penalty_flags = {
         "low_fps",
         "low_landmark_visibility",
@@ -413,5 +419,6 @@ def analyze_jump(
         takeoff_inclination_deg=takeoff_inclination,
         max_inclination_deg=max_inclination,
         confidence_score=confidence,
+        jump_length_m=jump_length,
         quality_flags=flags,
     )

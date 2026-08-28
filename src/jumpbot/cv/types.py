@@ -56,6 +56,7 @@ class AnalysisResult:
     takeoff_inclination_deg: float
     max_inclination_deg: float
     confidence_score: float
+    jump_length_m: float | None = None
     quality_flags: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
@@ -81,6 +82,7 @@ class AnalysisResult:
             "height_displacement_cm": (
                 self.height_displacement_m * 100 if self.height_displacement_m is not None else None
             ),
+            "jump_length_cm": self.jump_length_m * 100 if self.jump_length_m is not None else None,
             "takeoff_velocity_mps": self.takeoff_velocity_mps,
             "max_propulsion_velocity_mps": self.max_propulsion_velocity_mps,
             "max_angular_velocity_dps": self.max_angular_velocity_dps,
@@ -98,5 +100,5 @@ class AnalysisResult:
             "max_inclination_deg": self.max_inclination_deg,
             "confidence_score": self.confidence_score,
             "quality_flags": self.quality_flags,
-            "algorithm_version": "0.4.0",
+            "algorithm_version": "0.5.0",
         }
