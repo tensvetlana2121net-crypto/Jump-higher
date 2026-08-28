@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -58,6 +59,7 @@ def _draw_skater(layer: Image.Image) -> None:
     draw.line((587, 555, 646, 579), fill=(222, 250, 255, 255), width=11)
 
 
+@lru_cache(maxsize=1)
 def welcome_card_png() -> bytes:
     """Build the reusable /start welcome card without external assets."""
     image = Image.new("RGB", (1080, 1350), "#030817")

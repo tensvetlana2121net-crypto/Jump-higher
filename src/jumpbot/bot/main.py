@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -58,15 +59,26 @@ async def ensure_user(message: Message) -> User:
 @router.message(Command("start"))
 async def start(message: Message) -> None:
     await ensure_user(message)
-    await message.answer_photo(
-        BufferedInputFile(welcome_card_png(), filename="jump-higher-welcome.png"),
-        caption=(
-            "Научился падать, научись взлетать!\n\n"
-            "Загрузи видео до 10 сек.\n"
-            "«Предварительное вращение» бот не считает!\n"
-            "Используй приложения для анализа статистики."
-        ),
+    caption = (
+        "Научился падать, научись взлетать!\n\n"
+        "Загрузи видео до 10 сек.\n"
+        "«Предварительное вращение» бот не считает!\n"
+        "Используй приложения для анализа статистики."
     )
+    image_bytes = welcome_card_png()
+    for attempt in range(3):
+        try:
+            await message.answer_photo(
+                BufferedInputFile(image_bytes, filename="jump-higher-welcome.png"),
+                caption=caption,
+                request_timeout=90,
+            )
+            return
+        except TelegramNetworkError:
+            if attempt < 2:
+                await asyncio.sleep(3 * (attempt + 1))
+    logging.getLogger(__name__).error("Welcome card delivery failed after retries")
+    await message.answer(caption, request_timeout=30)
 
 
 @router.message(Command("height"))
