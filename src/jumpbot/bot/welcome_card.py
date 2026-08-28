@@ -44,19 +44,27 @@ def _draw_skater(layer: Image.Image) -> None:
     draw.polygon(((190, 371), (220, 356), (216, 390)), fill=cyan)
     draw.polygon(((830, 327), (860, 342), (831, 361)), fill=blue)
 
-    # Stylised skater in a compact airborne rotation pose.
-    draw.ellipse((500, 157, 577, 234), fill=(232, 250, 255, 255), outline=cyan, width=4)
+    # Figure-skater silhouette in a recognisable spiral ("swallow") pose.
+    ink = (7, 30, 73, 255)
+    draw.ellipse((474, 221, 536, 283), fill=(231, 251, 255, 255), outline=cyan, width=4)
     draw.polygon(
-        ((493, 233), (587, 228), (613, 405), (535, 478), (461, 396)),
-        fill=(15, 53, 106, 255),
+        ((486, 276), (561, 297), (590, 376), (507, 400), (459, 331)),
+        fill=ink,
         outline=cyan,
     )
-    draw.line((493, 258, 397, 347, 527, 315), fill=cyan, width=24, joint="curve")
-    draw.line((578, 255, 677, 330, 534, 316), fill=blue, width=24, joint="curve")
-    draw.line((514, 445, 486, 555, 540, 650), fill=cyan, width=29, joint="curve")
-    draw.line((559, 445, 588, 555, 540, 650), fill=blue, width=29, joint="curve")
-    draw.line((492, 555, 433, 579), fill=(222, 250, 255, 255), width=11)
-    draw.line((587, 555, 646, 579), fill=(222, 250, 255, 255), width=11)
+    # Extended arms.
+    draw.line((482, 302, 346, 326, 256, 302), fill=cyan, width=25, joint="curve")
+    draw.line((551, 315, 660, 271, 740, 207), fill=blue, width=25, joint="curve")
+    draw.ellipse((242, 291, 270, 315), fill=(230, 251, 255, 255))
+    draw.ellipse((728, 194, 752, 218), fill=(230, 251, 255, 255))
+    # Supporting leg and raised free leg.
+    draw.line((526, 386, 520, 504, 496, 609), fill=cyan, width=31, joint="curve")
+    draw.line((553, 374, 655, 326, 755, 245), fill=blue, width=32, joint="curve")
+    # White skate blades make the discipline unmistakable at phone size.
+    draw.line((493, 607, 446, 618), fill=(233, 252, 255, 255), width=12)
+    draw.line((446, 618, 503, 622), fill=cyan, width=5)
+    draw.line((749, 239, 797, 207), fill=(233, 252, 255, 255), width=12)
+    draw.line((763, 237, 804, 211), fill=blue, width=5)
 
 
 @lru_cache(maxsize=1)
@@ -108,15 +116,7 @@ def welcome_card_png() -> bytes:
             (125, top, 191, top + 66), radius=22, fill="#0B315C", outline="#24D9EF", width=2
         )
         draw.text((142, top + 19), number, font=_font(20, bold=True), fill="#6EF7FF")
-        draw.text((224, top + 13), text, font=_font(27, bold=True), fill="#E8F3FF")
-
-    _centered_text(
-        draw,
-        1290,
-        "ВИДЕОАНАЛИЗ ПРЫЖКОВ · 2D-ОЦЕНКА",
-        _font(19, bold=True),
-        "#668FB6",
-    )
+        draw.text((224, top + 10), text, font=_font(29, bold=True), fill="#FFFFFF")
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG", optimize=True)
     return output.getvalue()

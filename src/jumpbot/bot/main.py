@@ -70,7 +70,6 @@ async def start(message: Message) -> None:
         try:
             await message.answer_photo(
                 BufferedInputFile(image_bytes, filename="jump-higher-welcome.png"),
-                caption=caption,
                 request_timeout=90,
             )
             return
