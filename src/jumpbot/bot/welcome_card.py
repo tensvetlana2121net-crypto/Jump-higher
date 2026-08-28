@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from io import BytesIO
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -32,39 +33,72 @@ def _centered_text(
     draw.text(((1080 - (box[2] - box[0])) / 2, y), text, font=font, fill=fill)
 
 
+def _reference_skater() -> Image.Image:
+    source_path = Path(__file__).resolve().parents[1] / "assets" / "welcome_skater_reference.webp"
+    with Image.open(source_path) as source:
+        # The upper "swallow" is used exactly as supplied; colour thresholding
+        # removes the pale background and the disconnected diagram labels.
+        crop = source.convert("RGB").crop((165, 32, 385, 198))
+    pixels = crop.load()
+    mask = Image.new("L", crop.size, 0)
+    mask_pixels = mask.load()
+    for y in range(crop.height):
+        for x in range(crop.width):
+            red, green, blue = pixels[x, y]
+            if blue > red + 5 and blue > green + 5 and red < 145:
+                mask_pixels[x, y] = 255
+
+    # Keep only the largest connected component: the skater, not nearby words.
+    visited: set[tuple[int, int]] = set()
+    largest: list[tuple[int, int]] = []
+    for y in range(mask.height):
+        for x in range(mask.width):
+            if mask_pixels[x, y] == 0 or (x, y) in visited:
+                continue
+            component: list[tuple[int, int]] = []
+            stack = [(x, y)]
+            visited.add((x, y))
+            while stack:
+                current_x, current_y = stack.pop()
+                component.append((current_x, current_y))
+                for next_x, next_y in (
+                    (current_x - 1, current_y),
+                    (current_x + 1, current_y),
+                    (current_x, current_y - 1),
+                    (current_x, current_y + 1),
+                ):
+                    if (
+                        0 <= next_x < mask.width
+                        and 0 <= next_y < mask.height
+                        and mask_pixels[next_x, next_y]
+                        and (next_x, next_y) not in visited
+                    ):
+                        visited.add((next_x, next_y))
+                        stack.append((next_x, next_y))
+            if len(component) > len(largest):
+                largest = component
+
+    clean_mask = Image.new("L", crop.size, 0)
+    clean_pixels = clean_mask.load()
+    for x, y in largest:
+        clean_pixels[x, y] = 255
+    bounds = clean_mask.getbbox()
+    if bounds is None:
+        raise RuntimeError("Reference skater could not be extracted")
+    clean_mask = clean_mask.crop(bounds).resize((620, 470), Image.Resampling.LANCZOS)
+    skater = Image.new("RGBA", clean_mask.size, (56, 225, 255, 0))
+    skater.putalpha(clean_mask)
+    return skater
+
+
 def _draw_skater(layer: Image.Image) -> None:
     draw = ImageDraw.Draw(layer)
-    cyan = (60, 239, 255, 255)
-    blue = (54, 117, 255, 255)
-
-    # Rotation trails keep the figure readable while conveying movement.
     draw.arc((170, 95, 910, 655), 202, 510, fill=(39, 145, 255, 190), width=7)
     draw.arc((245, 155, 835, 600), 28, 330, fill=(42, 237, 255, 210), width=5)
     draw.arc((315, 205, 765, 550), 190, 478, fill=(94, 88, 255, 165), width=4)
-    draw.polygon(((190, 371), (220, 356), (216, 390)), fill=cyan)
-    draw.polygon(((830, 327), (860, 342), (831, 361)), fill=blue)
-
-    # Figure-skater silhouette in a recognisable spiral ("swallow") pose.
-    ink = (7, 30, 73, 255)
-    draw.ellipse((474, 221, 536, 283), fill=(231, 251, 255, 255), outline=cyan, width=4)
-    draw.polygon(
-        ((486, 276), (561, 297), (590, 376), (507, 400), (459, 331)),
-        fill=ink,
-        outline=cyan,
-    )
-    # Extended arms.
-    draw.line((482, 302, 346, 326, 256, 302), fill=cyan, width=25, joint="curve")
-    draw.line((551, 315, 660, 271, 740, 207), fill=blue, width=25, joint="curve")
-    draw.ellipse((242, 291, 270, 315), fill=(230, 251, 255, 255))
-    draw.ellipse((728, 194, 752, 218), fill=(230, 251, 255, 255))
-    # Supporting leg and raised free leg.
-    draw.line((526, 386, 520, 504, 496, 609), fill=cyan, width=31, joint="curve")
-    draw.line((553, 374, 655, 326, 755, 245), fill=blue, width=32, joint="curve")
-    # White skate blades make the discipline unmistakable at phone size.
-    draw.line((493, 607, 446, 618), fill=(233, 252, 255, 255), width=12)
-    draw.line((446, 618, 503, 622), fill=cyan, width=5)
-    draw.line((749, 239, 797, 207), fill=(233, 252, 255, 255), width=12)
-    draw.line((763, 237, 804, 211), fill=blue, width=5)
+    draw.polygon(((190, 371), (220, 356), (216, 390)), fill=(60, 239, 255, 255))
+    draw.polygon(((830, 327), (860, 342), (831, 361)), fill=(54, 117, 255, 255))
+    layer.alpha_composite(_reference_skater(), (230, 118))
 
 
 @lru_cache(maxsize=1)
@@ -103,20 +137,26 @@ def welcome_card_png() -> bytes:
     _centered_text(draw, 762, "НАУЧИСЬ ВЗЛЕТАТЬ!", _font(56, bold=True), "#66F3FF")
 
     draw.rounded_rectangle(
-        (82, 862, 998, 1248), radius=38, fill="#071A36", outline="#198BD8", width=3
+        (82, 852, 998, 1295), radius=38, fill="#071A36", outline="#198BD8", width=3
     )
     items = (
-        ("01", "Загрузи видео до 10 сек."),
-        ("02", '“Предварительное вращение” бот не считает!'),
-        ("03", "Используй приложения для анализа статистики."),
+        ("01", ("Загрузи видео до 10 сек.",)),
+        ("02", ("“Предварительное вращение”", "бот не считает!")),
+        ("03", ("Используй приложения", "для анализа статистики.")),
     )
-    for index, (number, text) in enumerate(items):
-        top = 905 + index * 105
+    row_tops = (890, 1000, 1150)
+    for top, (number, lines) in zip(row_tops, items, strict=True):
         draw.rounded_rectangle(
-            (125, top, 191, top + 66), radius=22, fill="#0B315C", outline="#24D9EF", width=2
+            (125, top, 197, top + 72), radius=23, fill="#0B315C", outline="#24D9EF", width=2
         )
-        draw.text((142, top + 19), number, font=_font(20, bold=True), fill="#6EF7FF")
-        draw.text((224, top + 10), text, font=_font(29, bold=True), fill="#FFFFFF")
+        draw.text((143, top + 20), number, font=_font(22, bold=True), fill="#6EF7FF")
+        for line_index, text in enumerate(lines):
+            draw.text(
+                (226, top - 2 + line_index * 42),
+                text,
+                font=_font(34, bold=True),
+                fill="#FFFFFF",
+            )
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG", optimize=True)
     return output.getvalue()
