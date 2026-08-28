@@ -412,7 +412,14 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
 async def _notify_user(telegram_user_id: int, text: str) -> None:
     bot = Bot(settings.telegram_bot_token)
     try:
-        await bot.send_message(telegram_user_id, text)
+        for attempt in range(3):
+            try:
+                await bot.send_message(telegram_user_id, text, request_timeout=30)
+                return
+            except TelegramNetworkError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(3 * (attempt + 1))
     except Exception:
         logger.exception(
             "Telegram notification failed",

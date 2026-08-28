@@ -313,7 +313,10 @@ def analyze_jump(
     takeoff_inclination = float(inclination[phases.takeoff])
     max_inclination = float(np.max(np.abs(inclination[phases.start : phases.takeoff + 1])))
 
-    visibility = _pose_visibility(frames)
+    analysis_frames = [
+        frame for frame in frames if phases.start <= frame.frame <= phases.landing
+    ]
+    visibility = _pose_visibility(analysis_frames or frames)
     flags: list[str] = []
     if fps < 50:
         flags.append("low_fps")

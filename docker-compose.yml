@@ -48,6 +48,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    extra_hosts:
+      - "api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}"
     volumes:
       - storage_data:/data/storage
     depends_on:
@@ -67,6 +69,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    extra_hosts:
+      - "api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}"
     volumes:
       - storage_data:/data/storage
     depends_on:
