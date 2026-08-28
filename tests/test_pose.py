@@ -6,6 +6,7 @@ import pytest
 from jumpbot.cv.pose import (
     _CameraStabilizer,
     _infer_tracked_pose,
+    _needs_full_frame_reacquire,
     _PersonTracker,
     _select_person,
     _tracking_roi,
@@ -126,3 +127,28 @@ def test_tracked_pose_skips_detector_and_restores_full_frame_coordinates() -> No
 
     assert np.allclose(keypoints, [[[60.0, 90.0]]])
     assert np.allclose(scores, [[0.9]])
+
+
+def test_reacquires_full_frame_when_cropped_torso_confidence_drops() -> None:
+    points = np.full((1, 26, 2), 150.0)
+    scores = np.full((1, 26), 0.9)
+    scores[:, [5, 6, 11, 12]] = 0.2
+
+    assert _needs_full_frame_reacquire(points, scores, (50, 50, 250, 350))
+
+
+def test_keeps_crop_when_torso_is_confident_and_centered() -> None:
+    points = np.full((1, 26, 2), 150.0)
+    points[:, :, 1] = 200.0
+    scores = np.full((1, 26), 0.9)
+
+    assert not _needs_full_frame_reacquire(points, scores, (50, 50, 250, 350))
+
+
+def test_reacquires_full_frame_when_torso_reaches_crop_edge() -> None:
+    points = np.full((1, 26, 2), 150.0)
+    points[:, :, 1] = 200.0
+    points[:, 11, 1] = 342.0
+    scores = np.full((1, 26), 0.9)
+
+    assert _needs_full_frame_reacquire(points, scores, (50, 50, 250, 350))

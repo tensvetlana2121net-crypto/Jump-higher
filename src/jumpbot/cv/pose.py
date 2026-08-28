@@ -121,6 +121,40 @@ def _infer_tracked_pose(
     return keypoints, scores
 
 
+def _needs_full_frame_reacquire(
+    keypoints: np.ndarray,
+    scores: np.ndarray,
+    crop_box: tuple[int, int, int, int] | None,
+) -> bool:
+    """Detect when a tracked crop no longer contains a reliable torso."""
+    if crop_box is None:
+        return False
+    points = np.asarray(keypoints)
+    confidence = np.asarray(scores)
+    if points.size == 0 or confidence.size == 0:
+        return True
+    if points.ndim == 2:
+        points = points[None, ...]
+    if confidence.ndim == 1:
+        confidence = confidence[None, ...]
+    torso_indexes = np.array([5, 6, 11, 12])
+    torso_scores = confidence[:, torso_indexes]
+    person = int(np.argmax(np.mean(torso_scores, axis=1)))
+    if float(np.mean(torso_scores[person])) < 0.45:
+        return True
+
+    x1, y1, x2, y2 = crop_box
+    margin_x = max(8.0, 0.08 * (x2 - x1))
+    margin_y = max(8.0, 0.08 * (y2 - y1))
+    torso = points[person, torso_indexes]
+    return bool(
+        np.any(torso[:, 0] <= x1 + margin_x)
+        or np.any(torso[:, 0] >= x2 - margin_x)
+        or np.any(torso[:, 1] <= y1 + margin_y)
+        or np.any(torso[:, 1] >= y2 - margin_y)
+    )
+
+
 @dataclass
 class _CameraStabilizer:
     """Estimate camera pan/zoom from background features outside the athlete ROI."""
@@ -347,6 +381,8 @@ def extract_pose_rtmpose(
             )
             inference_started = perf_counter()
             keypoints, scores = _infer_tracked_pose(estimator, image, crop_box)
+            if _needs_full_frame_reacquire(keypoints, scores, crop_box):
+                keypoints, scores = estimator(image)
             inference_seconds += perf_counter() - inference_started
             selected = tracker.select(keypoints, scores)
             if selected is not None:

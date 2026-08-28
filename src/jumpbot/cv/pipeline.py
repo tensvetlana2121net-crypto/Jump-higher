@@ -143,7 +143,55 @@ def _foot_orientation(frames: list[FramePose], frame_count: int) -> np.ndarray |
     return clean_trajectory(interpolated)
 
 
+_FULL_FRAME_RETRY_ERRORS = {
+    "Analysis confidence is too low",
+    "Detected flight phases are physically inconsistent",
+    "Implausibly long flight interval",
+    "Insufficient visible pose frames",
+    "Landing was not detected",
+    "Pose tracking contains a long gap",
+    "Take-off was not detected",
+    "Trajectory contains a gap that is too long",
+}
+
+
 def analyze_jump(
+    video_path: Path,
+    athlete_height_m: float | None = None,
+    pose_backend: str = "rtmpose",
+    tracking_roi_enabled: bool = True,
+    camera_stabilization_enabled: bool = True,
+) -> AnalysisResult:
+    """Analyze a jump, retrying hard tracking scenes without the virtual crop."""
+    try:
+        return _analyze_jump_once(
+            video_path,
+            athlete_height_m,
+            pose_backend,
+            tracking_roi_enabled,
+            camera_stabilization_enabled,
+        )
+    except ValueError as exc:
+        if (
+            not tracking_roi_enabled
+            or pose_backend != "rtmpose"
+            or str(exc) not in _FULL_FRAME_RETRY_ERRORS
+        ):
+            raise
+        logger.warning(
+            "ROI analysis failed (%s); retrying full-frame athlete detection",
+            exc,
+        )
+        return _analyze_jump_once(
+            video_path,
+            athlete_height_m,
+            pose_backend,
+            False,
+            camera_stabilization_enabled,
+        )
+
+
+def _analyze_jump_once(
     video_path: Path,
     athlete_height_m: float | None = None,
     pose_backend: str = "rtmpose",
