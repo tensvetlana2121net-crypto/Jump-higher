@@ -28,6 +28,15 @@ def test_miniapp_static_assets_exist() -> None:
     assert (static_dir / "classification.css").is_file()
 
 
+def test_floor_tour_is_available_as_a_jump_choice() -> None:
+    static_dir = get_settings().miniapp_static_dir
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    script = (static_dir / "app.js").read_text(encoding="utf-8")
+
+    assert '<option value="floor_tour" hidden>Туры</option>' in html
+    assert "updateAnalysisMode" in script
+
+
 @pytest.mark.parametrize(
     ("name", "rotations", "expected"),
     [

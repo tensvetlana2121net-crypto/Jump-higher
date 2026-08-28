@@ -34,7 +34,7 @@
           <input id="video" name="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska" required>
           <span class="drop-icon">↑</span><strong id="file-label">Выбрать видео</strong><small>MP4, MOV, AVI, MKV или WebM · до 20 МБ</small>
         </label>
-        <label class="field">Прыжок<select name="jump_name" required><option value="axel">Аксель</option><option value="loop">Риттбергер</option><option value="salchow">Сальхов</option><option value="flip">Флип</option><option value="lutz">Лутц</option><option value="toe_loop">Тулуп</option></select></label>
+        <label class="field">Прыжок<select id="jump-name" name="jump_name" required><option value="axel">Аксель</option><option value="loop">Риттбергер</option><option value="salchow">Сальхов</option><option value="flip">Флип</option><option value="lutz">Лутц</option><option value="toe_loop">Тулуп</option><option value="floor_tour" hidden>Туры</option></select></label>
         <label class="field">Обороты<select name="rotation_count" required><option value="1">Одинарный</option><option value="2">Двойной</option><option value="3">Тройной</option><option value="4">Четверной</option></select></label>
         <label class="field height">Рост спортсмена, см<input name="athlete_height_cm" type="number" min="100" max="250" step="0.1" inputmode="decimal" placeholder="170" required></label>
         <button type="submit">Начать анализ</button>
@@ -58,6 +58,6 @@
 
     <footer>Результаты — тренировочная оценка по 2D-видео, а не медицинское или лабораторное 3D-измерение.</footer>
   </main>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260828-2"></script>
 </body>
 </html>
