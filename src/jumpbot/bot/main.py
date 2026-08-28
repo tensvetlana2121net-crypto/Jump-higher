@@ -37,6 +37,12 @@ class HeightSetup(StatesGroup):
     waiting_for_height = State()
 
 
+class PublicationSetup(StatesGroup):
+    waiting_for_rotation = State()
+    waiting_for_name = State()
+    waiting_for_cascade_details = State()
+
+
 async def ensure_user(message: Message) -> User:
     assert message.from_user is not None
     async with SessionLocal() as session:
@@ -108,6 +114,204 @@ async def history(message: Message) -> None:
         for row in rows
     ]
     await message.answer("Последние анализы:\n" + "\n".join(lines))
+
+
+async def _publish_jump(
+    telegram_user_id: int,
+    jump_id: uuid.UUID,
+    *,
+    jump_type: str | None = None,
+    declared_jump_label: str | None = None,
+) -> bool:
+    async with SessionLocal() as session:
+        jump = await session.scalar(
+            select(JumpHistory)
+            .join(User, User.id == JumpHistory.user_id)
+            .where(
+                JumpHistory.id == jump_id,
+                User.telegram_user_id == telegram_user_id,
+                JumpHistory.status == AnalysisStatus.COMPLETED,
+            )
+        )
+        if jump is None:
+            return False
+        if jump_type is not None:
+            jump.jump_type = jump_type
+        metrics = dict(jump.metric_data or {})
+        if declared_jump_label:
+            metrics["declared_jump_label"] = declared_jump_label
+        metrics["published_to_app"] = True
+        jump.metric_data = metrics
+        jump.published_to_app = True
+        await session.commit()
+        return True
+
+
+@router.callback_query(F.data.startswith("app:publish:"))
+async def choose_publish(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.from_user is None:
+        return
+    try:
+        jump_id = uuid.UUID((callback.data or "").rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Некорректный результат", show_alert=True)
+        return
+    async with SessionLocal() as session:
+        jump = await session.scalar(
+            select(JumpHistory)
+            .join(User, User.id == JumpHistory.user_id)
+            .where(JumpHistory.id == jump_id, User.telegram_user_id == callback.from_user.id)
+        )
+    if jump is None or jump.status != AnalysisStatus.COMPLETED:
+        await callback.answer("Результат не найден", show_alert=True)
+        return
+    metrics = jump.metric_data or {}
+    mode = str(metrics.get("analysis_mode", "single"))
+    await state.update_data(publication_jump_id=str(jump_id), publication_mode=mode)
+    await callback.answer()
+    if callback.message is None:
+        return
+    await callback.message.edit_reply_markup(reply_markup=None)
+    if mode == "cascade":
+        await state.set_state(PublicationSetup.waiting_for_cascade_details)
+        await callback.message.answer(
+            "Заполните данные прыжка: напишите состав каскада, например:\n"
+            "<b>Двойной аксель + ойлер + тройной тулуп</b>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    await state.set_state(PublicationSetup.waiting_for_rotation)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Одинарный", callback_data="app:rotation:1"),
+                InlineKeyboardButton(text="Двойной", callback_data="app:rotation:2"),
+            ],
+            [
+                InlineKeyboardButton(text="Тройной", callback_data="app:rotation:3"),
+                InlineKeyboardButton(text="Четверной", callback_data="app:rotation:4"),
+            ],
+        ]
+    )
+    await callback.message.answer("Укажите количество оборотов:", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("app:keep:"))
+async def keep_best_later(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.answer("Результат оставлен только в боте")
+    if callback.message is not None:
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(
+            "Хорошо, этот результат не переношу. Можно отправить новое видео и дождаться "
+            "лучшего результата."
+        )
+
+
+@router.callback_query(PublicationSetup.waiting_for_rotation, F.data.startswith("app:rotation:"))
+async def choose_publication_rotation(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        rotation = int((callback.data or "").rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        rotation = 0
+    if rotation not in {1, 2, 3, 4}:
+        await callback.answer("Выберите количество оборотов", show_alert=True)
+        return
+    data = await state.get_data()
+    await state.update_data(publication_rotation=rotation)
+    await callback.answer()
+    if callback.message is None:
+        return
+    if data.get("publication_mode") == "floor_tour":
+        jump_id = uuid.UUID(str(data["publication_jump_id"]))
+        labels = {
+            1: "Одинарный тур",
+            2: "Двойной тур",
+            3: "Тройной тур",
+            4: "Четверной тур",
+        }
+        published = await _publish_jump(
+            callback.from_user.id,
+            jump_id,
+            jump_type=f"{rotation}_floor_tour",
+            declared_jump_label=labels[rotation],
+        )
+        await state.clear()
+        await callback.message.answer(
+            "Результат добавлен в приложение." if published else "Не удалось найти результат."
+        )
+        return
+    await state.set_state(PublicationSetup.waiting_for_name)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Аксель", callback_data="app:name:axel"),
+                InlineKeyboardButton(text="Риттбергер", callback_data="app:name:loop"),
+            ],
+            [
+                InlineKeyboardButton(text="Сальхов", callback_data="app:name:salchow"),
+                InlineKeyboardButton(text="Флип", callback_data="app:name:flip"),
+            ],
+            [
+                InlineKeyboardButton(text="Луц", callback_data="app:name:lutz"),
+                InlineKeyboardButton(text="Тулуп", callback_data="app:name:toe_loop"),
+            ],
+        ]
+    )
+    await callback.message.answer("Выберите название прыжка:", reply_markup=keyboard)
+
+
+@router.callback_query(PublicationSetup.waiting_for_name, F.data.startswith("app:name:"))
+async def choose_publication_name(callback: CallbackQuery, state: FSMContext) -> None:
+    jump_name = (callback.data or "").rsplit(":", 1)[-1]
+    names = {
+        "axel": "Аксель",
+        "loop": "Риттбергер",
+        "salchow": "Сальхов",
+        "flip": "Флип",
+        "lutz": "Луц",
+        "toe_loop": "Тулуп",
+    }
+    if jump_name not in names:
+        await callback.answer("Выберите название прыжка", show_alert=True)
+        return
+    data = await state.get_data()
+    rotation = int(data["publication_rotation"])
+    jump_id = uuid.UUID(str(data["publication_jump_id"]))
+    rotation_labels = {1: "Одинарный", 2: "Двойной", 3: "Тройной", 4: "Четверной"}
+    published = await _publish_jump(
+        callback.from_user.id,
+        jump_id,
+        jump_type=f"{rotation}_{jump_name}",
+        declared_jump_label=f"{rotation_labels[rotation]} {names[jump_name]}",
+    )
+    await state.clear()
+    await callback.answer()
+    if callback.message is not None:
+        await callback.message.answer(
+            "Результат добавлен в приложение." if published else "Не удалось найти результат."
+        )
+
+
+@router.message(PublicationSetup.waiting_for_cascade_details, F.text)
+async def receive_cascade_details(message: Message, state: FSMContext) -> None:
+    label = " ".join((message.text or "").split())
+    if not 5 <= len(label) <= 120:
+        await message.answer("Введите состав каскада текстом длиной от 5 до 120 символов.")
+        return
+    if message.from_user is None:
+        return
+    data = await state.get_data()
+    jump_id = uuid.UUID(str(data["publication_jump_id"]))
+    published = await _publish_jump(
+        message.from_user.id,
+        jump_id,
+        declared_jump_label=label,
+    )
+    await state.clear()
+    await message.answer(
+        "Результат добавлен в приложение." if published else "Не удалось найти результат."
+    )
 
 
 @router.message(Command("myid"))
@@ -291,11 +495,13 @@ async def _process_video(
                 "cascade": "cascade",
                 "floor_tour": "floor_tour",
             }.get(analysis_mode, "countermovement"),
+            published_to_app=False,
             calibration_method="athlete_height",
             metric_data={
                 "athlete_height_cm": float(athlete_height_cm),
                 "analysis_mode": analysis_mode,
                 "training_surface": "floor" if analysis_mode == "floor_tour" else "ice",
+                "submission_source": "bot",
             },
         )
         session.add(jump)

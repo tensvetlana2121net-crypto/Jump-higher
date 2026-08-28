@@ -88,7 +88,7 @@ async def list_analyses(
     user = await _ensure_user(session, identity)
     result = await session.scalars(
         select(JumpHistory)
-        .where(JumpHistory.user_id == user.id)
+        .where(JumpHistory.user_id == user.id, JumpHistory.published_to_app.is_(True))
         .order_by(JumpHistory.created_at.desc())
         .limit(limit)
     )
@@ -102,7 +102,9 @@ async def get_analysis(
     user = await _ensure_user(session, identity)
     jump = await session.scalar(
         select(JumpHistory).where(
-            JumpHistory.id == jump_id, JumpHistory.user_id == user.id
+            JumpHistory.id == jump_id,
+            JumpHistory.user_id == user.id,
+            JumpHistory.published_to_app.is_(True),
         )
     )
     if jump is None:
@@ -165,12 +167,14 @@ async def create_analysis(
         source_file_sha256=sha256_file(path),
         duration_ms=round(metadata.duration_s * 1000),
         jump_type=jump_type,
+        published_to_app=True,
         calibration_method="athlete_height",
         metric_data={
             "athlete_height_cm": athlete_height_cm,
             "analysis_mode": analysis_mode,
             "cascade_element_count": cascade_element_count,
             "training_surface": "floor" if analysis_mode == "floor_tour" else "ice",
+            "submission_source": "miniapp",
         },
     )
     session.add(jump)

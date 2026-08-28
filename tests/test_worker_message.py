@@ -1,5 +1,11 @@
+import uuid
+
 from jumpbot.cv.types import AnalysisResult, PhaseFrames
-from jumpbot.worker import _format_analysis_message, _result_card_png
+from jumpbot.worker import (
+    _format_analysis_message,
+    _result_card_png,
+    _result_publication_keyboard,
+)
 
 
 def test_analysis_message_contains_extended_metrics() -> None:
@@ -45,3 +51,17 @@ def test_analysis_message_contains_extended_metrics() -> None:
     card = _result_card_png(result)
     assert card.startswith(b"\x89PNG\r\n\x1a\n")
     assert len(card) > 10_000
+
+
+def test_result_publication_keyboard_contains_both_choices() -> None:
+    jump_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
+
+    keyboard = _result_publication_keyboard(jump_id)
+
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert [button.text for button in buttons] == [
+        "Перенести в приложение",
+        "Дождаться лучшего результата",
+    ]
+    assert buttons[0].callback_data == f"app:publish:{jump_id}"
+    assert buttons[1].callback_data == f"app:keep:{jump_id}"

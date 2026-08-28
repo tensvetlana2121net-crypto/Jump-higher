@@ -9,7 +9,7 @@ from time import perf_counter
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from celery import Celery
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from sqlalchemy import select
@@ -341,6 +341,8 @@ async def _analyze_video(jump_id: uuid.UUID) -> dict[str, object]:
             await session.commit()
             if user and settings.telegram_bot_token:
                 await _notify_result_card(user.telegram_user_id, result)
+                if requested_metadata.get("submission_source") != "miniapp":
+                    await _notify_publish_choice(user.telegram_user_id, jump.id)
             return payload
         except ValueError as exc:
             jump.status = AnalysisStatus.REJECTED
@@ -446,6 +448,51 @@ async def _notify_result_card(telegram_user_id: int, result: AnalysisResult) -> 
         logger.exception(
             "Telegram result card delivery failed",
             extra={"telegram_user_id": telegram_user_id},
+        )
+    finally:
+        await bot.session.close()
+
+
+def _result_publication_keyboard(jump_id: uuid.UUID) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Перенести в приложение",
+                    callback_data=f"app:publish:{jump_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Дождаться лучшего результата",
+                    callback_data=f"app:keep:{jump_id}",
+                )
+            ],
+        ]
+    )
+
+
+async def _notify_publish_choice(telegram_user_id: int, jump_id: uuid.UUID) -> None:
+    keyboard = _result_publication_keyboard(jump_id)
+    bot = Bot(settings.telegram_bot_token)
+    try:
+        for attempt in range(3):
+            try:
+                await bot.send_message(
+                    telegram_user_id,
+                    "Перенести результат в приложение или дождаться лучшего результата?",
+                    reply_markup=keyboard,
+                    request_timeout=30,
+                )
+                return
+            except TelegramNetworkError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(3 * (attempt + 1))
+    except Exception:
+        logger.exception(
+            "Telegram publication choice delivery failed",
+            extra={"telegram_user_id": telegram_user_id, "jump_id": str(jump_id)},
         )
     finally:
         await bot.session.close()

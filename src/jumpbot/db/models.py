@@ -4,7 +4,18 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -87,6 +98,7 @@ class JumpHistory(TimestampMixin, Base):
     frame_count: Mapped[int | None] = mapped_column(Integer)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     jump_type: Mapped[str] = mapped_column(String(32), default="countermovement")
+    published_to_app: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     calibration_method: Mapped[str | None] = mapped_column(String(32))
     start_frame: Mapped[int | None] = mapped_column(Integer)
     takeoff_frame: Mapped[int | None] = mapped_column(Integer)
