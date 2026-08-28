@@ -6,7 +6,7 @@ def _landmark(visibility: float) -> Landmark:
     return Landmark(x_px=10.0, y_px=20.0, visibility=visibility)
 
 
-def test_pose_visibility_is_not_collapsed_by_one_hidden_extremity() -> None:
+def test_pose_visibility_is_driven_by_torso_not_hidden_extremities() -> None:
     points = {
         "head": _landmark(0.88),
         "left_shoulder": _landmark(0.91),
@@ -21,7 +21,7 @@ def test_pose_visibility_is_not_collapsed_by_one_hidden_extremity() -> None:
     }
     frames = [FramePose(frame=index, time_s=index / 30, points=points) for index in range(5)]
 
-    assert _pose_visibility(frames) == 0.87
+    assert _pose_visibility(frames) == 0.89
 
 
 def test_pose_visibility_returns_zero_without_supported_landmarks() -> None:

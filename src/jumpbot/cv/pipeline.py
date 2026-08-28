@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -17,16 +18,14 @@ from jumpbot.cv.phases import detect_phases
 from jumpbot.cv.pose import extract_pose
 from jumpbot.cv.types import AnalysisResult, FramePose
 
+logger = logging.getLogger(__name__)
+
 _CONFIDENCE_LANDMARKS = (
     "head",
     "left_shoulder",
     "right_shoulder",
     "left_hip",
     "right_hip",
-    "left_knee",
-    "right_knee",
-    "left_ankle",
-    "right_ankle",
 )
 
 
@@ -203,11 +202,12 @@ def analyze_jump(
         max_gap=max_pose_gap,
     )
     raw_com_y_px = _whole_body_com(frames, "y_px", trajectory_frame_count)
-    com_fallback_used = bool(np.count_nonzero(~np.isfinite(raw_com_y_px)))
+    com_missing = ~np.isfinite(raw_com_y_px)
+    com_full_fallback = False
     valid_com = np.isfinite(raw_com_y_px)
     if np.count_nonzero(valid_com) < 3:
         raw_com_y_px = hip_y_px.copy()
-        com_fallback_used = True
+        com_full_fallback = True
     elif not valid_com.all():
         hip_offset = float(np.median(raw_com_y_px[valid_com] - hip_y_px[valid_com]))
         raw_com_y_px[~valid_com] = hip_y_px[~valid_com] + hip_offset
@@ -259,6 +259,10 @@ def analyze_jump(
         fps,
         body_height_px=body_height_px,
         minimum_takeoff_frame=minimum_lead_frames,
+    )
+    phase_missing = com_missing[phases.start : phases.landing + 1]
+    com_fallback_used = com_full_fallback or (
+        phase_missing.size > 0 and float(np.mean(phase_missing)) > 0.2
     )
     flight_time = (phases.landing - phases.takeoff) / fps
     if flight_time > 0.9:
@@ -398,6 +402,15 @@ def analyze_jump(
     }
     penalty = 0.08 * len(penalty_flags.intersection(flags))
     confidence = float(np.clip(0.55 * visibility + 0.25 * min(fps / 60, 1) + 0.2 - penalty, 0, 1))
+    logger.info(
+        "Analysis quality confidence=%.3f visibility=%.3f penalty=%.3f flags=%s phase=%d:%d",
+        confidence,
+        visibility,
+        penalty,
+        ",".join(flags) or "none",
+        phases.start,
+        phases.landing,
+    )
     if confidence < 0.45:
         raise ValueError("Analysis confidence is too low")
 

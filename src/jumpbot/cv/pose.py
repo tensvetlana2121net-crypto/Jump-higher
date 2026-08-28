@@ -221,8 +221,9 @@ def _select_person(
 
 
 def _person_geometry(points: np.ndarray, scores: np.ndarray) -> tuple[np.ndarray, float]:
-    core = np.asarray(points)[5:17]
-    visible = np.asarray(scores)[5:17] >= 0.35
+    torso_indexes = np.array([5, 6, 11, 12])
+    core = np.asarray(points)[torso_indexes]
+    visible = np.asarray(scores)[torso_indexes] >= 0.35
     sample = core[visible] if np.count_nonzero(visible) >= 4 else core
     center = np.median(sample, axis=0)
     span = np.ptp(sample, axis=0)
@@ -256,7 +257,8 @@ class _PersonTracker:
             _person_geometry(candidate, candidate_scores)
             for candidate, candidate_scores in zip(candidates, confidence, strict=True)
         ]
-        mean_scores = np.mean(confidence[:, :17], axis=1)
+        torso_indexes = np.array([5, 6, 11, 12])
+        mean_scores = np.mean(confidence[:, torso_indexes], axis=1)
         if self.center is None:
             scales = np.array([geometry[1] for geometry in geometries])
             index = int(np.argmax(mean_scores + 0.25 * scales / np.max(scales)))
@@ -273,12 +275,12 @@ class _PersonTracker:
                 scale_cost = abs(float(np.log(scale / self.scale)))
                 pose_cost = 0.0
                 if self.points is not None:
-                    visible = (candidate_scores[:17] >= 0.35) & np.isfinite(
-                        self.points[:17]
+                    visible = (candidate_scores[torso_indexes] >= 0.35) & np.isfinite(
+                        self.points[torso_indexes]
                     ).all(axis=1)
                     if np.count_nonzero(visible) >= 4:
-                        current = candidate[:17][visible] - center
-                        previous = self.points[:17][visible] - self.center
+                        current = candidate[torso_indexes][visible] - center
+                        previous = self.points[torso_indexes][visible] - self.center
                         pose_cost = float(
                             np.median(np.linalg.norm(current - previous, axis=1)) / normalizer
                         )
