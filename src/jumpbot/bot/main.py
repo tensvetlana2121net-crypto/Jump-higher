@@ -8,9 +8,16 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy import func, select
 
+from jumpbot.bot.welcome_card import welcome_card_png
 from jumpbot.config import get_settings
 from jumpbot.db.models import AnalysisStatus, JumpHistory, User
 from jumpbot.db.session import SessionLocal
@@ -51,11 +58,14 @@ async def ensure_user(message: Message) -> User:
 @router.message(Command("start"))
 async def start(message: Message) -> None:
     await ensure_user(message)
-    await message.answer(
-        "Отправьте видео прыжка. Затем бот попросит ввести рост спортсмена "
-        "в сантиметрах и автоматически начнёт анализ.\n\n"
-        "Снимайте сбоку, держите камеру неподвижно и оставьте стопы в кадре.",
-        parse_mode=ParseMode.HTML,
+    await message.answer_photo(
+        BufferedInputFile(welcome_card_png(), filename="jump-higher-welcome.png"),
+        caption=(
+            "Научился падать, научись взлетать!\n\n"
+            "Загрузи видео до 10 сек.\n"
+            "«Предварительное вращение» бот не считает!\n"
+            "Используй приложения для анализа статистики."
+        ),
     )
 
 
